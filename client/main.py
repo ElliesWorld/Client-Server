@@ -1,8 +1,10 @@
 import sys 
 import argparse 
+from PyQt6.QtGui import QCursor
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import ( 
     QApplication, QMainWindow, QPushButton,  
-    QLabel, QVBoxLayout, QWidget, QTextEdit 
+    QLabel, QVBoxLayout, QWidget, QTextEdit, QHBoxLayout, QSpacerItem, QSizePolicy
 ) 
 from communication import SecureCommunication 
   
@@ -18,33 +20,45 @@ class SecureClientUI(QMainWindow):
   
         # Main layout 
         layout = QVBoxLayout() 
+
+        # Horizontal layout for the buttons
+        button_layout = QHBoxLayout()
   
         # Session Button 
         self.session_button = QPushButton("Establish Session") 
         self.session_button.clicked.connect(self.toggle_session) 
-        layout.addWidget(self.session_button) 
+        button_layout.addWidget(self.session_button) 
 
         # Temperature Button 
         self.temp_button = QPushButton("Get Temperature") 
         self.temp_button.clicked.connect(self.get_temperature) 
         self.temp_button.setEnabled(False) 
-        layout.addWidget(self.temp_button) 
+        button_layout.addWidget(self.temp_button) 
   
         # Relay Toggle Button 
         self.relay_button = QPushButton("Toggle Relay") 
         self.relay_button.clicked.connect(self.toggle_relay) 
         self.relay_button.setEnabled(False) 
-        layout.addWidget(self.relay_button) 
+        button_layout.addWidget(self.relay_button)
+
+        # Fixed space (4 cm)
+        spacer = QSpacerItem(80, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
+        button_layout.addSpacerItem(spacer)
+
+        # Hyperlink-style "Clear Log"
+        self.clear_log_label = QLabel("<a href='#'>Clear</a>")
+        self.clear_log_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.clear_log_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.clear_log_label.linkActivated.connect(self.clear_log)
+        button_layout.addWidget(self.clear_log_label)
+
+        # Add the horizontal button layout to the main vertical layout
+        layout.addLayout(button_layout)
   
         # Log Area 
         self.log_area = QTextEdit() 
         self.log_area.setReadOnly(True) 
         layout.addWidget(self.log_area) 
-  
-        # Clear Log Button 
-        clear_log_button = QPushButton("Clear Log") 
-        clear_log_button.clicked.connect(self.clear_log) 
-        layout.addWidget(clear_log_button) 
   
         # Central Widget 
         central_widget = QWidget() 
