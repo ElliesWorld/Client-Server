@@ -1,34 +1,54 @@
-import time
-import random
-import base64
+import time, random, struct, base64, serial
 from mbedtls import pk, cipher, hmac, hashlib
-import serial
 
 class SecureCommunication:
-    def __init__(self, port: str, baud_rate: int):
-        self.port = port
-        self.baud_rate = baud_rate
-        self.session = None
 
-    def establish_session(self) -> bool:
-        # Placeholder for session establishment logic
-        print(f"Establishing session on port {self.port} with baud rate {self.baud_rate}")
-        self.session = True
-        return True
+    HMAC_SECRET_KEY = b"Fj2-;wu3Ur=ARl2!Tqi6IuKM3nG]8z1+"
+    AES_KEY_SIZE = 32
+    RSA_KEY_SIZE = 256
 
-    def close(self):
-        # Placeholder for closing connection
-        print("Closing communication")
+    def __init__(self, port, baud_rate):
+        """Initialize secure communication"""
+        self._serial_port = serial.Serial(port, baud_rate, timeout=1)
+        from session import SecureSession
+        self.session = SecureSession(self.HMAC_SECRET_KEY)
 
-    def get_temperature(self) -> float:
-        # Placeholder for getting temperature
-        return 25.0
+    def establish_session(self, port, baudrate):
+        try:
+            self.serial = serial.Serial(port, int(baudrate), timeout=1)
+            self.session_active = True
+            return True
+        except Exception as e:
+            print(f"Error: {e}")
+            return False
 
-    def toggle_relay(self) -> bool:
-        # Placeholder for toggling relay
-        print("Relay toggled")
-        return True
+    def terminate_session(self):
+        if self.serial:
+            self.serial.close()
+        self.session_active = False
 
-    def end_session(self):
-        # Placeholder for ending session
-        self.session = None
+    def is_session_active(self):
+        return self.session_active
+    
+    def send_command(self, command):
+        if not self.session_active:
+            return None
+
+        # Generate HMAC for the command
+        hmac_gen = hmac.new(self.HMAC_SECRET_KEY, digestmod="SHA256")
+        hmac_gen.update(command.encode())
+        hmac_value = hmac_gen.digest()
+
+        # Send command + HMAC
+        payload = base64.b64encode(command.encode() + hmac_value)
+        self.serial.write(payload + b'\n')
+
+        # Read response
+        response = self.serial.readline().strip()
+        return base64.b64decode(response).decode()
+
+    def get_temperature(self):
+        return self.send_command("GET_TEMP")
+
+    def toggle_relay(self):
+        return self.send_command("TOGGLE_RELAY")
