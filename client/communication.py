@@ -1,4 +1,8 @@
 import time
+import random
+import base64
+from mbedtls import pk, cipher, hmac, hashlib
+import serial
 
 class SecureCommunication:
     def __init__(self, port: str, baud_rate: int):
