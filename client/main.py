@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,  
     QLabel, QVBoxLayout, QWidget, QTextEdit, QHBoxLayout, QSpacerItem, QSizePolicy
 ) 
-from communication import SecureCommunication 
+from session import SecureCommunication 
   
 class SecureClientUI(QMainWindow): 
     def __init__(self, port: str, baud_rate: int): 
