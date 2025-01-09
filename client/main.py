@@ -71,7 +71,7 @@ class SecureClientUI(QMainWindow):
   
     def toggle_session(self): 
         try: 
-            if not self.communication.session.is_session_valid(): 
+            if not self.communication.is_active(): 
                 # Establish Session 
                 if self.communication.establish_session(): 
                     self.session_button.setText("Close Session") 
