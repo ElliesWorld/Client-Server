@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,  
     QLabel, QVBoxLayout, QWidget, QTextEdit, QHBoxLayout, QSpacerItem, QSizePolicy
 ) 
-from communication import SecureCommunication 
+from session import SecureCommunication 
   
 class SecureClientUI(QMainWindow): 
     def __init__(self, port: str, baud_rate: int): 
@@ -71,7 +71,7 @@ class SecureClientUI(QMainWindow):
   
     def toggle_session(self): 
         try: 
-            if not self.communication.session.is_session_valid(): 
+            if not self.communication.is_active(): 
                 # Establish Session 
                 if self.communication.establish_session(): 
                     self.session_button.setText("Close Session") 
