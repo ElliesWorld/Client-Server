@@ -26,11 +26,11 @@ class SecureCommunication:
         rsa_keys.generate(RSA_KEY_SIZE, 65537)
         return rsa_keys
 
-    def _generate_hmac(self, message):
-        """Generate HMAC-SHA256 for message authentication"""
+    def _generate_hmac(self, message: bytes) -> str:
+        """Generate HMAC-SHA256 for message authentication (hex format)"""
         hash_mac = hmac.new(HMAC_SECRET_KEY, digestmod="SHA256")
         hash_mac.update(message)
-        return hash_mac.digest()
+        return hash_mac.hexdigest()
 
     def _encrypt_with_hmac(self, message):
         """Encrypt message and generate HMAC"""
@@ -51,7 +51,7 @@ class SecureCommunication:
 
         return encrypted_message, hmac_digest
 
-    def _decrypt_with_hmac_verification(self, encrypted_message, received_hmac):
+    def _decrypt_with_hmac_verification(self, encrypted_message: bytes, received_hmac: str) -> bytes:
         """Decrypt message after HMAC verification"""
         computed_hmac = self._generate_hmac(encrypted_message)
         if computed_hmac != received_hmac:
@@ -67,46 +67,44 @@ class SecureCommunication:
     def establish_session(self):
         """Establish a secure communication session"""
         try:
-            # 1. Send client public key
+            # Step 1: Send client public key
             client_pubkey_der = self.rsa_keys.export_key(format="DER", public=True)
             client_pubkey_hmac = self._generate_hmac(client_pubkey_der)
             self.serial_port.write(client_pubkey_der + client_pubkey_hmac)
 
-            # 2. Receive server's encrypted public key and HMAC
+            # Step 2: Receive server's encrypted public key and HMAC
             server_encrypted_pubkey = self.serial_port.read(RSA_KEY_SIZE // 8)
             server_pubkey_hmac = self.serial_port.read(HMAC_DIGEST_SIZE)
 
-            # 3. Verify HMAC of server's public key
+            # Step 3: Verify HMAC of server's public key
             computed_hmac = self._generate_hmac(server_encrypted_pubkey)
             if computed_hmac != server_pubkey_hmac:
                 raise ValueError("Server public key HMAC verification failed")
 
-            # 4. Decrypt server's public key
+            # Step 4: Decrypt server's public key
             server_pubkey = self.rsa_keys.decrypt(server_encrypted_pubkey)
 
-            # 5. Generate new client RSA key pair
-            self.rsa_keys = self._generate_rsa_keys()
-            new_client_pubkey = self.rsa_keys.export_public_key()
-
-            # 6. Generate AES key and IV
+            # Step 5: Generate AES key and IV
             self.aes_key = os.urandom(AES_KEY_SIZE)
             self.aes_iv = os.urandom(AES_IV_SIZE)
 
-            # 7. Encrypt AES key and IV with server's public key
-            encrypted_secrets = self.rsa_keys.encrypt(self.aes_key + self.aes_iv)
+            # Step 6: Encrypt AES key and IV with server's public key
+            rsa_server = pk.RSA()
+            rsa_server.import_key(server_pubkey)
+            encrypted_secrets = rsa_server.encrypt(self.aes_key + self.aes_iv)
 
-            # 8. Prepare final handshake message
-            final_message = new_client_pubkey + encrypted_secrets
+            # Step 7: Prepare final handshake message
+            final_message = client_pubkey_der + encrypted_secrets
             final_hmac = self._generate_hmac(final_message)
 
-            # 9. Send final message
+            # Step 8: Send final message
             self.serial_port.write(final_message + final_hmac)
 
-            # 10. Receive session confirmation
+            # Step 9: Receive session confirmation
             session_response = self.serial_port.read(RSA_KEY_SIZE // 8)
             session_hmac = self.serial_port.read(HMAC_DIGEST_SIZE)
 
-            # 11. Verify session response
+            # Step 10: Verify session response
             self._decrypt_with_hmac_verification(session_response, session_hmac)
 
             # Session established successfully
@@ -116,6 +114,7 @@ class SecureCommunication:
         except Exception as e:
             print(f"Session establishment error: {e}")
             return False
+
 
     def get_temperature(self):
         """Retrieve temperature from server."""
@@ -128,7 +127,7 @@ class SecureCommunication:
             encrypted_command, command_hmac = self._encrypt_with_hmac(command)
 
             # Step 2: Send the encrypted command and HMAC to the server
-            self.serial_port.write(encrypted_command + command_hmac)
+            self.serial_port.write(encrypted_command + bytes.fromhex(command_hmac))
 
             # Step 3: Wait for the response from the server
             response = self.serial_port.read(32)  # Adjust size as needed
@@ -162,7 +161,7 @@ class SecureCommunication:
             encrypted_command, command_hmac = self._encrypt_with_hmac(command)
 
             # Send the encrypted command and HMAC to the server
-            self.serial_port.write(encrypted_command + command_hmac)
+            self.serial_port.write(encrypted_command + bytes.fromhex(command_hmac))
 
             # Wait for the response
             response = self.serial_port.read(32)  # Adjust size as needed
