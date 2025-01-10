@@ -177,12 +177,29 @@ class SecureCommunication:
         except Exception as e:
             print(f"Error toggling relay: {e}")
             return None
-
+        
+    def is_session_active(self):
+        if not self.aes_key or not self.aes_iv:
+            return False
+        if time.time() - self.last_activity_time > 60:
+            self.end_session()
+            return False
+        return True
+    
     def check_session_timeout(self):
         """Check if the session has timed out (1 minute of inactivity)"""
         if self.last_activity_time and (time.time() - self.last_activity_time > 60):
             print("Session has expired due to inactivity.")
             self.end_session()
+
+    def send_command(self, command: bytes):
+        encrypted_command, command_hmac = self._encrypt_with_hmac(command)
+        self.serial_port.write(encrypted_command + bytes.fromhex(command_hmac))
+
+    def receive_response(self):
+        response = self.serial_port.read(32)  # Adjust size
+        response_hmac = self.serial_port.read(HMAC_DIGEST_SIZE)
+        return self._decrypt_with_hmac_verification(response, response_hmac)
 
     def end_session(self):
         """End the current session."""

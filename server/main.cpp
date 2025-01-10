@@ -1,27 +1,33 @@
-#include <Arduino.h>
-#include "session.h"
-#include "communication.h"
+#include "communication/communication.h"
+#include "session/session.h"
+#include <iostream>
+#include <vector>
 
-SerialCommunication *serialComm;
-
-void setup()
+int main()
 {
-    Serial.begin(115200);
-    setupSession();
-    serialComm = new SerialCommunication("/dev/ttyUSB0", 115200);
-}
+    SerialCommunication comm("/dev/ttyUSB0", 9600);
+    Session session;
 
-void loop()
-{
-    loopSession();
-
-    if (Serial.available())
+    while (true)
     {
-        size_t input_length = Serial.available();
-        uint8_t input_buffer[input_length];
-        Serial.readBytes(input_buffer, input_length);
+        // Wait for client data
+        std::vector<uint8_t> client_data = comm.read(256);
 
-        // Forward received data to session processing
-        processCommand(input_buffer, input_length);
+        if (!client_data.empty())
+        {
+            std::vector<uint8_t> response;
+            if (session.establish(client_data, response))
+            {
+                comm.write(response);
+                std::cout << "Session established." << std::endl;
+            }
+            else
+            {
+                std::cout << "Session establishment failed." << std::endl;
+            }
+        }
     }
+
+    comm.close();
+    return 0;
 }

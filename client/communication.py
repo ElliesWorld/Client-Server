@@ -2,42 +2,61 @@ import serial
 import time
 
 from mbedtls import cipher, hmac
+from session import SecureCommunication
 
-class SecureCommunication:
+class Communication:
 
     def __init__(self, port: str, baud_rate: int):
         self.port = port
         self.baud_rate = baud_rate
-#        self.session = SecureSession()  # placeholder 
         self.serial_port = serial.Serial(port, baud_rate, timeout=1)
+        self.session_active = False  # Track session status
 
-    def establish_session(self) -> bool:
-        """Establish a secure session."""
-        return self.session.establish_session()
+    def connect(self):
+        """Establish a secure connection."""
+        try:
+            self.secure_comm = SecureCommunication(self.port, self.baud_rate)
+            if self.secure_comm.establish_session():
+                print("Secure session established.")
+            else:
+                print("Failed to establish a secure session.")
+        except Exception as e:
+            print(f"Connection error: {e}")
 
-    def close(self):
-        """Close the serial port."""
-        if self.serial_port.is_open:
-            self.serial_port.close()
-            print("Serial port closed.")
+    def disconnect(self):
+        """Terminate the secure connection."""
+        if self.secure_comm:
+            self.secure_comm.end_session()
+            self.secure_comm = None
+            print("Disconnected successfully.")
 
-    def end_session(self):
-        """End the current session."""
-        self.session.end_session()
+    def send(self, command: bytes):
+        """Send a command securely."""
+        if not self.secure_comm or not self.secure_comm.is_session_active():
+            print("Session is not active. Please reconnect.")
+            return None
+        
+        try:
+            self.secure_comm.check_session_timeout()
+            self.secure_comm.send_command(command)
+        except Exception as e:
+            print(f"Error while sending: {e}")
 
-    def is_active(self) -> bool:
-        """Check if the session is active."""
-        return self.session.is_active()
+    def receive(self):
+        """Receive a response securely."""
+        if not self.secure_comm or not self.secure_comm.is_session_active():
+            print("Session is not active. Please reconnect.")
+            return None
+        
+        try:
+            self.secure_comm.check_session_timeout()
+            return self.secure_comm.receive_response()
+        except Exception as e:
+            print(f"Error while receiving: {e}")
+            return None
 
-    def send_message(self, message: bytes):
-        """Send a message to the server."""
-        if not self.is_active():
-            raise RuntimeError("No active session.")
-
-        # Sending the raw message bytes
-        self.serial_port.write(message)
-
-    def receive_message(self, size: int) -> bytes:
-        """Receive a message from the server."""
-        # Reading the specified number of bytes from the serial port
-        return self.serial_port.read(size)    
+    def delete(self):
+        """Delete session and resources."""
+        self.disconnect()
+        self.secure_comm = None
+        print("Session deleted.")
