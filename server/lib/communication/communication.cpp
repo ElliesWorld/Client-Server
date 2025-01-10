@@ -1,56 +1,91 @@
 #include "communication.h"
-#include <serial/serial.h> // Include a serial library for C++
-#include <iostream>
+#include <Arduino.h>
 
-class SerialCommunication::Impl
+Communication::Communication(HardwareSerial &serial) : serialPort(serial) {}
+
+bool Communication::init()
 {
-public:
-    serial::Serial serial_port;
-
-    Impl(const std::string &port, unsigned long baud_rate)
-        : serial_port(port, baud_rate, serial::Timeout::simpleTimeout(1000))
-    {
-        if (!serial_port.isOpen())
-        {
-            std::cerr << "Failed to open serial port!" << std::endl;
-        }
-        else
-        {
-            std::cout << "Serial port opened successfully." << std::endl;
-        }
-    }
-};
-
-SerialCommunication::SerialCommunication(const std::string &port, unsigned long baud_rate)
-    : pImpl(new Impl(port, baud_rate)) {}
-
-void SerialCommunication::write(const unsigned char *data, size_t length)
-{
-    if (!pImpl->serial_port.isOpen())
-    {
-        std::cerr << "Serial port is not open!" << std::endl;
-        return;
-    }
-    pImpl->serial_port.write(data, length);
+    serialPort.begin(115200); // Default baud rate
+    return true;
 }
 
-std::vector<unsigned char> SerialCommunication::read(size_t length)
+bool Communication::handleCommand(CommandType cmd)
 {
-    std::vector<unsigned char> buffer(length);
-    if (!pImpl->serial_port.isOpen())
+    switch (cmd)
     {
-        std::cerr << "Serial port is not open!" << std::endl;
-        return buffer; // Return empty buffer
+    case GET_TEMPERATURE:
+    {
+        float temp = readCoreTemperature();
+        return sendTemperatureResponse(temp);
     }
-    pImpl->serial_port.read(buffer.data(), length);
-    return buffer;
+
+    case TOGGLE_RELAY:
+    {
+        toggleRelay();
+        return sendRelayStateResponse(digitalRead(32) == HIGH);
+    }
+
+    default:
+        return false;
+    }
 }
 
-void SerialCommunication::close()
+bool Communication::sendMessage(const uint8_t *message, size_t length)
 {
-    if (pImpl->serial_port.isOpen())
-    {
-        pImpl->serial_port.close();
-        std::cout << "Serial port closed." << std::endl;
-    }
+    if (!serialPort)
+        return false;
+
+    // Send message length first
+    serialPort.write((uint8_t *)&length, sizeof(size_t));
+
+    // Send actual message
+    serialPort.write(message, length);
+    serialPort.flush();
+    return true;
+}
+
+bool Communication::receiveMessage(uint8_t *buffer, size_t &length)
+{
+    if (!serialPort.available())
+        return false;
+
+    // Receive message length
+    size_t expectedLength;
+    serialPort.readBytes((uint8_t *)&expectedLength, sizeof(size_t));
+
+    // Receive message
+    length = serialPort.readBytes(buffer, expectedLength);
+
+    return length == expectedLength;
+}
+
+void Communication::close()
+{
+    serialPort.end();
+}
+
+float Communication::readCoreTemperature()
+{
+    return temperatureRead();
+}
+
+void Communication::toggleRelay()
+{
+    static bool relayState = false;
+    relayState = !relayState;
+    digitalWrite(32, relayState ? HIGH : LOW);
+}
+
+bool Communication::sendTemperatureResponse(float temperature)
+{
+    // Convert float to bytes
+    uint8_t tempBytes[sizeof(float)];
+    memcpy(tempBytes, &temperature, sizeof(float));
+    return sendMessage(tempBytes, sizeof(float));
+}
+
+bool Communication::sendRelayStateResponse(bool state)
+{
+    uint8_t stateBytes[1] = {state ? 1 : 0};
+    return sendMessage(stateBytes, 1);
 }

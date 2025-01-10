@@ -1,7 +1,7 @@
 import sys 
 import argparse 
 from PyQt6.QtGui import QCursor
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import ( Qt, QTimer )
 from PyQt6.QtWidgets import ( 
     QApplication, QMainWindow, QPushButton,  
     QLabel, QVBoxLayout, QWidget, QTextEdit, QHBoxLayout, QSpacerItem, QSizePolicy
@@ -64,6 +64,15 @@ class SecureClientUI(QMainWindow):
         central_widget = QWidget() 
         central_widget.setLayout(layout) 
         self.setCentralWidget(central_widget) 
+
+        # Setup session timeout timer
+        self.session_timeout_timer = QTimer(self)
+        self.session_timeout_timer.timeout.connect(self.check_session_timeout)
+        self.session_timeout_timer.start(30000)  # Check every 30 seconds
+
+    def check_session_timeout(self):
+        if not self.communication.is_session_active():
+            self.toggle_session()  # Automatically close the session
   
     def log_message(self, message: str): 
         """Add message to log area""" 

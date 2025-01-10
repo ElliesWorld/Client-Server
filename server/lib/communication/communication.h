@@ -1,20 +1,35 @@
 #ifndef COMMUNICATION_H
 #define COMMUNICATION_H
 
-#include <string>
-#include <vector>
+#include <Arduino.h>
 
-class SerialCommunication
+enum CommandType
+{
+    GET_TEMPERATURE,
+    TOGGLE_RELAY
+};
+
+class Communication
 {
 public:
-    SerialCommunication(const std::string &port, unsigned long baud_rate);
-    void write(const unsigned char *data, size_t length);
-    std::vector<unsigned char> read(size_t length);
+    Communication(HardwareSerial &serial);
+
+    bool init();
+    bool sendMessage(const uint8_t *message, size_t length);
+    bool receiveMessage(uint8_t *buffer, size_t &length);
     void close();
 
+    // New methods for handling commands
+    bool handleCommand(CommandType cmd);
+    bool sendTemperatureResponse(float temperature);
+    bool sendRelayStateResponse(bool state);
+
 private:
-    class Impl; // Forward declaration for PImpl idiom
-    Impl *pImpl;
+    HardwareSerial &serialPort;
+
+    // Helper methods
+    float readCoreTemperature();
+    void toggleRelay();
 };
 
 #endif // COMMUNICATION_H

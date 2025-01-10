@@ -10,21 +10,30 @@ AES_IV_SIZE = 16
 RSA_KEY_SIZE = 2048
 DEFAULT_BAUD_RATE = 115200
 HMAC_DIGEST_SIZE = 32  # SHA256 digest size
+SESSION_TIMEOUT = 60  # 1 minute session timeout
 
 class SecureCommunication:
     def __init__(self, port, baud_rate=DEFAULT_BAUD_RATE):
-        self.serial_port = serial.Serial(port, baud_rate, timeout=1)
-        self.rsa_keys = self._generate_rsa_keys()
-        self.aes_key = None
-        self.aes_iv = None
-        self.session_id = None
-        self.last_activity_time = None
+        try:
+            self.serial_port = serial.Serial(port, baud_rate, timeout=1)
+            self.rsa_keys = self._generate_rsa_keys()
+            self.aes_key = None
+            self.aes_iv = None
+            self.session_id = None
+            self.last_activity_time = None
+        except Exception as e:
+            print(f"Error initializing communication: {e}")
+            raise    
 
     def _generate_rsa_keys(self):
-        """Generate RSA-2048 key pair"""
-        rsa_keys = pk.RSA()
-        rsa_keys.generate(RSA_KEY_SIZE, 65537)
-        return rsa_keys
+        try:
+            """Generate RSA-2048 key pair"""
+            rsa_keys = pk.RSA()
+            rsa_keys.generate(RSA_KEY_SIZE, 65537)
+            return rsa_keys
+        except Exception as e:
+            print(f"RSA key generation failed: {e}")
+            raise
 
     def _generate_hmac(self, message: bytes) -> str:
         """Generate HMAC-SHA256 for message authentication (hex format)"""
@@ -200,6 +209,15 @@ class SecureCommunication:
         response = self.serial_port.read(32)  # Adjust size
         response_hmac = self.serial_port.read(HMAC_DIGEST_SIZE)
         return self._decrypt_with_hmac_verification(response, response_hmac)
+    
+    def close(self):
+        """Close the serial connection."""
+        try:
+            if hasattr(self, 'serial_port') and self.serial_port:
+                self.serial_port.close()
+            self.end_session()
+        except Exception as e:
+            print(f"Error closing session: {e}")
 
     def end_session(self):
         """End the current session."""

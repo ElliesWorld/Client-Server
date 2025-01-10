@@ -1,33 +1,66 @@
-#include "communication/communication.h"
-#include "session/session.h"
-#include <iostream>
-#include <vector>
+#include <Arduino.h>
+#include "session.h"
+#include "communication.h"
 
-int main()
+#define RELAY_PIN 32
+#define LED_PIN 21
+
+Session secureSession;
+Communication communication(Serial);
+
+void setup()
 {
-    SerialCommunication comm("/dev/ttyUSB0", 9600);
-    Session session;
+    // Initialize Serial
+    communication.init();
 
-    while (true)
+    // Initialize Pins
+    pinMode(RELAY_PIN, OUTPUT);
+    pinMode(LED_PIN, OUTPUT);
+
+    // Initial State
+    digitalWrite(RELAY_PIN, LOW);
+    digitalWrite(LED_PIN, LOW);
+
+    // Attempt to Establish Secure Session
+    if (secureSession.establishKeyExchange())
     {
-        // Wait for client data
-        std::vector<uint8_t> client_data = comm.read(256);
+        digitalWrite(LED_PIN, HIGH);
+    }
+    else
+    {
+        digitalWrite(LED_PIN, LOW);
+    }
+}
 
-        if (!client_data.empty())
+void loop()
+{
+    // Check Session Status
+    if (!secureSession.isSessionEstablished())
+    {
+        // Attempt to Re-establish Session
+        secureSession.endSession();
+        if (secureSession.establishKeyExchange())
         {
-            std::vector<uint8_t> response;
-            if (session.establish(client_data, response))
-            {
-                comm.write(response);
-                std::cout << "Session established." << std::endl;
-            }
-            else
-            {
-                std::cout << "Session establishment failed." << std::endl;
-            }
+            digitalWrite(LED_PIN, HIGH);
+        }
+        else
+        {
+            digitalWrite(LED_PIN, LOW);
         }
     }
 
-    comm.close();
-    return 0;
+    // Handle Incoming Commands
+    if (Serial.available())
+    {
+        String command = Serial.readStringUntil('\n');
+
+        if (command == "GET_TEMP")
+        {
+            communication.handleCommand(GET_TEMPERATURE);
+        }
+        else if (command == "TOGGLE_RELAY")
+        {
+            communication.handleCommand(TOGGLE_RELAY);
+        }
+    }
 }
