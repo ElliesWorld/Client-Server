@@ -1,6 +1,6 @@
 #include <Arduino.h>
-#include "session.h"
-#include "communication.h"
+#include "../lib/session/session.h"
+#include "../lib/communication/communication.h"
 
 #define RELAY_PIN 32
 #define LED_PIN 21
@@ -11,6 +11,7 @@ Communication communication(Serial);
 void setup()
 {
     // Initialize Serial
+    Serial.begin(115200);
     communication.init();
 
     // Initialize Pins
@@ -21,15 +22,6 @@ void setup()
     digitalWrite(RELAY_PIN, LOW);
     digitalWrite(LED_PIN, LOW);
 
-    // Attempt to Establish Secure Session
-    if (secureSession.establishKeyExchange())
-    {
-        digitalWrite(LED_PIN, HIGH);
-    }
-    else
-    {
-        digitalWrite(LED_PIN, LOW);
-    }
 }
 
 void loop()
@@ -63,4 +55,6 @@ void loop()
             communication.handleCommand(TOGGLE_RELAY);
         }
     }
+    // Small delay to prevent watchdog timer issues
+    delay(10);
 }

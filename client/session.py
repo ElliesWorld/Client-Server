@@ -21,6 +21,7 @@ class SecureCommunication:
             self.aes_iv = None
             self.session_id = None
             self.last_activity_time = None
+            self._is_active = False
         except Exception as e:
             print(f"Error initializing communication: {e}")
             raise    
@@ -77,8 +78,8 @@ class SecureCommunication:
         """Establish a secure communication session"""
         try:
             # Step 1: Send client public key
-            client_pubkey_der = self.rsa_keys.export_key(format="DER", public=True)
-            client_pubkey_hmac = self._generate_hmac(client_pubkey_der)
+            client_pubkey_der = self.rsa_keys.export_key(format="DER")
+            client_pubkey_hmac = self._generate_hmac(client_pubkey_der).encode('utf-8')
             self.serial_port.write(client_pubkey_der + client_pubkey_hmac)
 
             # Step 2: Receive server's encrypted public key and HMAC
@@ -86,9 +87,16 @@ class SecureCommunication:
             server_pubkey_hmac = self.serial_port.read(HMAC_DIGEST_SIZE)
 
             # Step 3: Verify HMAC of server's public key
-            computed_hmac = self._generate_hmac(server_encrypted_pubkey)
+            computed_hmac = self._generate_hmac(server_encrypted_pubkey).encode('utf-8')
             if computed_hmac != server_pubkey_hmac:
                 raise ValueError("Server public key HMAC verification failed")
+            
+            # Modify _generate_hmac to return bytes instead of str
+            def _generate_hmac(self, message: bytes) -> bytes:
+                """Generate HMAC-SHA256 for message authentication (bytes format)"""
+                hash_mac = hmac.new(HMAC_SECRET_KEY, digestmod="SHA256")
+                hash_mac.update(message)
+                return hash_mac.digest()
 
             # Step 4: Decrypt server's public key
             server_pubkey = self.rsa_keys.decrypt(server_encrypted_pubkey)
@@ -120,8 +128,13 @@ class SecureCommunication:
             self.last_activity_time = time.time()  # Update last activity time
             return True
 
+            result = self._establish_session_internal()
+            self._is_active = result
+
         except Exception as e:
             print(f"Session establishment error: {e}")
+            import traceback
+            traceback.print_exc()  
             return False
 
 
@@ -187,13 +200,21 @@ class SecureCommunication:
             print(f"Error toggling relay: {e}")
             return None
         
+    def is_active(self):
+        """Check if the session is currently active"""
+        return self.is_session_active()
+        
     def is_session_active(self):
         if not self.aes_key or not self.aes_iv:
             return False
-        if time.time() - self.last_activity_time > 60:
-            self.end_session()
-            return False
-        return True
+        
+        # Check if session has timed out
+        if self.last_activity_time:
+            current_time = time.time()
+            if current_time - self.last_activity_time > SESSION_TIMEOUT:
+                self.end_session()
+                return False
+
     
     def check_session_timeout(self):
         """Check if the session has timed out (1 minute of inactivity)"""
@@ -209,20 +230,21 @@ class SecureCommunication:
         response = self.serial_port.read(32)  # Adjust size
         response_hmac = self.serial_port.read(HMAC_DIGEST_SIZE)
         return self._decrypt_with_hmac_verification(response, response_hmac)
-    
-    def close(self):
-        """Close the serial connection."""
-        try:
-            if hasattr(self, 'serial_port') and self.serial_port:
-                self.serial_port.close()
-            self.end_session()
-        except Exception as e:
-            print(f"Error closing session: {e}")
 
     def end_session(self):
         """End the current session."""
         self.aes_key = None
         self.aes_iv = None
-        self.rsa_keys = None
         self.session_id = None
+        self.last_activity_time = None
+        self._is_active = False
         print("Session ended.")
+
+    def close(self):
+        """Close the communication channel and end the session"""
+        try:
+            self.end_session()
+            if hasattr(self, 'serial_port') and self.serial_port:
+                self.serial_port.close()
+        except Exception as e:
+            print(f"Error closing communication: {e}")

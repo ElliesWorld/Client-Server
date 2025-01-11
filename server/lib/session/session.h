@@ -1,7 +1,6 @@
 #ifndef SESSION_H
 #define SESSION_H
 
-#include <Arduino.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/aes.h>
 #include <mbedtls/sha256.h>
@@ -41,6 +40,9 @@ public:
     // Utility Methods
     static bool calculateSecretKeyHash(uint8_t *hash);
 
+    float getCoreTemperature();
+    bool toggleRelay();
+
 private:
     // Cryptographic Contexts
     mbedtls_pk_context serverRsaKey;
@@ -76,6 +78,8 @@ private:
     // LED Control (optional, can be moved to separate class)
     void indicateSessionEstablished();
     void indicateSessionFailed();
+
+    bool constantTimeMemCmp(const uint8_t *a, const uint8_t *b, size_t length);
 };
 
 #endif // SESSION_H

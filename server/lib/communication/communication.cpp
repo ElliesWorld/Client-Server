@@ -1,5 +1,5 @@
 #include "communication.h"
-#include <Arduino.h>
+//#include <Arduino.h>
 
 Communication::Communication(HardwareSerial &serial) : serialPort(serial) {}
 
@@ -44,7 +44,7 @@ bool Communication::sendMessage(const uint8_t *message, size_t length)
     return true;
 }
 
-bool Communication::receiveMessage(uint8_t *buffer, size_t &length)
+bool Communication::receiveMessage(uint8_t *buffer, size_t *length)
 {
     if (!serialPort.available())
         return false;
@@ -54,9 +54,9 @@ bool Communication::receiveMessage(uint8_t *buffer, size_t &length)
     serialPort.readBytes((uint8_t *)&expectedLength, sizeof(size_t));
 
     // Receive message
-    length = serialPort.readBytes(buffer, expectedLength);
+    *length = serialPort.readBytes(buffer, expectedLength);
 
-    return length == expectedLength;
+    return *length == expectedLength;
 }
 
 void Communication::close()
