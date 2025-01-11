@@ -2,7 +2,15 @@
 #include "communication.h"
 
 // Define the hardcoded HMAC secret key
-const char *Session::HMAC_SECRET_KEY = "Fj2-;wu3Ur=ARl2!Tqi6IuKM3nG]8z1+";
+//const char *Session::HMAC_SECRET_KEY = "Fj2-;wu3Ur=ARl2!Tqi6IuKM3nG]8z1+";
+
+const uint8_t Session::HMAC_SECRET_KEY[] = {
+    0x46, 0x6A, 0x32, 0x2D, 0x3B, 0x77, 0x75, 0x33,
+    0x55, 0x72, 0x3D, 0x41, 0x52, 0x6C, 0x32, 0x21,
+    0x54, 0x71, 0x69, 0x36, 0x49, 0x75, 0x4B, 0x4D,
+    0x33, 0x6E, 0x47, 0x5D, 0x38, 0x7A, 0x31, 0x2B};
+
+const size_t Session::HMAC_SECRET_KEY_LENGTH = sizeof(Session::HMAC_SECRET_KEY);
 
 // LED Pin Definition
 const int LED_PIN = 21;
@@ -55,8 +63,12 @@ void Session::cleanupCryptoContexts()
 
 bool Session::establishKeyExchange()
 {
-
     Communication comm(Serial);
+
+    // Debug: Print key lengths and statuses
+    Serial.println("Starting Key Exchange");
+    Serial.print("Server Public Key Length: ");
+    Serial.println(mbedtls_pk_get_len(&serverRsaKey));
 
     // Turn off LED at start of key exchange
     digitalWrite(LED_PIN, LOW);
@@ -140,11 +152,15 @@ bool Session::establishKeyExchange()
         // Step 9: Generate and Send HMAC for Server Public Key
         uint8_t serverPubKeyHmac[HMAC_SIZE];
         if (!generateHMAC(encryptedServerPubKey, encryptedServerPubKeyLen, serverPubKeyHmac)) {
+            Serial.println("Failed to send encrypted public key");
             indicateSessionFailed();
             return false;
         }
-        
+        Serial.print("Sent Encrypted Public Key Length: ");
+        Serial.println(encryptedServerPubKeyLen);
+
         if (!comm.sendMessage(serverPubKeyHmac, sizeof(serverPubKeyHmac))) {
+            Serial.println("Failed to send public key HMAC");
             indicateSessionFailed();
             return false;
         }
@@ -312,8 +328,8 @@ bool Session::generateHMAC(const uint8_t *data, size_t dataLen, uint8_t *hmac)
     }
 
     if (mbedtls_md_hmac_starts(&md_ctx,
-                               reinterpret_cast<const uint8_t *>(HMAC_SECRET_KEY),
-                               strlen(HMAC_SECRET_KEY)) != 0)
+                               HMAC_SECRET_KEY,
+                               HMAC_SECRET_KEY_LENGTH) != 0)
     {
         mbedtls_md_free(&md_ctx);
         return false;
@@ -498,8 +514,8 @@ bool Session::calculateSecretKeyHash(uint8_t *hash)
 
     mbedtls_sha256_starts(&sha256_ctx, 0); // 0 for SHA-256
     mbedtls_sha256_update(&sha256_ctx,
-                          reinterpret_cast<const uint8_t *>(HMAC_SECRET_KEY),
-                          strlen(HMAC_SECRET_KEY));
+                          Session::HMAC_SECRET_KEY,
+                          Session::HMAC_SECRET_KEY_LENGTH);
     mbedtls_sha256_finish(&sha256_ctx, hash);
 
     mbedtls_sha256_free(&sha256_ctx);

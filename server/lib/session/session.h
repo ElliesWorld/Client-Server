@@ -11,12 +11,16 @@
 class Session
 {
 public:
+
     // Constants
     static const int RSA_KEY_SIZE = 2048;
     static const int AES_KEY_SIZE = 32;
     static const int AES_IV_SIZE = 16;
     static const int HMAC_SIZE = 32;
     static const unsigned long SESSION_TIMEOUT_MS = 60000; // 1 minute
+
+    static const uint8_t HMAC_SECRET_KEY[];
+    static const size_t HMAC_SECRET_KEY_LENGTH;
 
     // Constructor and Destructor
     Session();
@@ -58,9 +62,6 @@ private:
 
     bool sessionEstablished;
     unsigned long lastActivityTime;
-
-    // Hardcoded HMAC Secret Key
-    static const char *HMAC_SECRET_KEY;
 
     // Internal Cryptographic Methods
     bool generateHMAC(const uint8_t *data, size_t dataLen, uint8_t *hmac);

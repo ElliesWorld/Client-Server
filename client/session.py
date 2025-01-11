@@ -2,6 +2,7 @@ import os
 import struct
 import serial
 import time
+import hashlib
 from mbedtls import pk, cipher, hmac
 
 HMAC_SECRET_KEY = b"Fj2-;wu3Ur=ARl2!Tqi6IuKM3nG]8z1+"
@@ -36,11 +37,17 @@ class SecureCommunication:
             print(f"RSA key generation failed: {e}")
             raise
 
-    def _generate_hmac(self, message: bytes) -> str:
-        """Generate HMAC-SHA256 for message authentication (hex format)"""
-        hash_mac = hmac.new(HMAC_SECRET_KEY, digestmod="SHA256")
-        hash_mac.update(message)
-        return hash_mac.hexdigest()
+    def _generate_hmac(self, message: bytes) -> bytes:
+        """Generate HMAC-SHA256 for message authentication (bytes format)"""
+        secret_key = b'Fj2-;wu3Ur=ARl2!Tqi6IuKM3nG]8z1+'  # Ensure this is bytes
+
+        import hashlib
+        import hmac
+        # Create HMAC object using hashlib
+        hmac_obj = hmac.new(secret_key, message, hashlib.sha256)
+        return hmac_obj.digest()  # Return as bytes
+        #hmac_obj = hmac.new(secret_key, message, hashlib.sha256)
+        #return hmac_obj.digest()  # Return as bytes
 
     def _encrypt_with_hmac(self, message):
         """Encrypt message and generate HMAC"""
@@ -77,26 +84,78 @@ class SecureCommunication:
     def establish_session(self):
         """Establish a secure communication session"""
         try:
+            print("Attempting to establish session...")
+
+            # Verbose logging of initial state
+            print(f"Serial Port: {self.serial_port}")
+            print(f"Serial Port Is Open: {self.serial_port.is_open}")
+
             # Step 1: Send client public key
             client_pubkey_der = self.rsa_keys.export_key(format="DER")
-            client_pubkey_hmac = self._generate_hmac(client_pubkey_der).encode('utf-8')
-            self.serial_port.write(client_pubkey_der + client_pubkey_hmac)
+            print(f"Client Public Key Length: {len(client_pubkey_der)}")
 
+            # Generate HMAC as bytes
+            client_pubkey_hmac = self._generate_hmac(client_pubkey_der)
+            print(f"Client Public Key HMAC (hex): {client_pubkey_hmac.hex()}")
+        
+            # Combine and send public key and HMAC
+            full_message = client_pubkey_der + client_pubkey_hmac
+            print(f"Full Message Length: {len(full_message)}")
+        
+            # Flush any existing input
+            self.serial_port.reset_input_buffer()
+        
+            # Send the full message
+            self.serial_port.write(full_message)
+            self.serial_port.flush()
+
+            # Increase timeout for reading
+            original_timeout = self.serial_port.timeout
+            self.serial_port.timeout = 5 
+
+            # Give time for the server to process
+            time.sleep(1)
+        
             # Step 2: Receive server's encrypted public key and HMAC
             server_encrypted_pubkey = self.serial_port.read(RSA_KEY_SIZE // 8)
+            print(f"Server Encrypted Public Key Length: {len(server_encrypted_pubkey)}")
+        
+            # Additional debugging: print raw bytes
+            print("Server Encrypted Public Key (hex):", server_encrypted_pubkey.hex())
+        
+            # Check if we received any data
+            if len(server_encrypted_pubkey) == 0:
+                print("No data received from server. Possible communication issues.")
+
+                # Additional diagnostic information
+                print("Available input:", self.serial_port.in_waiting)
+
+                # Try to read any available bytes
+                available_bytes = self.serial_port.read(self.serial_port.in_waiting)
+                print("Available bytes (hex):", available_bytes.hex())
+
+                return False
+
             server_pubkey_hmac = self.serial_port.read(HMAC_DIGEST_SIZE)
+            print(f"Server Public Key HMAC Length: {len(server_pubkey_hmac)}")
+            print(f"Server Public Key HMAC (hex): {server_pubkey_hmac.hex()}")
 
             # Step 3: Verify HMAC of server's public key
-            computed_hmac = self._generate_hmac(server_encrypted_pubkey).encode('utf-8')
+            computed_hmac = self._generate_hmac(server_encrypted_pubkey)
+            print(f"Computed HMAC (hex): {computed_hmac.hex()}")
+
+            # Restore original timeout
+            self.serial_port.timeout = original_timeout
+
+            # Verify HMAC
+            computed_hmac = self._generate_hmac(server_encrypted_pubkey)
+            print(f"Computed HMAC (hex): {computed_hmac.hex()}")
+        
             if computed_hmac != server_pubkey_hmac:
+                print("HMAC Verification Failed:")
+                print(f"Computed HMAC: {computed_hmac.hex()}")
+                print(f"Received HMAC: {server_pubkey_hmac.hex()}")
                 raise ValueError("Server public key HMAC verification failed")
-            
-            # Modify _generate_hmac to return bytes instead of str
-            def _generate_hmac(self, message: bytes) -> bytes:
-                """Generate HMAC-SHA256 for message authentication (bytes format)"""
-                hash_mac = hmac.new(HMAC_SECRET_KEY, digestmod="SHA256")
-                hash_mac.update(message)
-                return hash_mac.digest()
 
             # Step 4: Decrypt server's public key
             server_pubkey = self.rsa_keys.decrypt(server_encrypted_pubkey)
