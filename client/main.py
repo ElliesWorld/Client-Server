@@ -1,17 +1,18 @@
 import sys 
 import argparse 
+import os, struct
 from PyQt6.QtGui import QCursor
 from PyQt6.QtCore import ( Qt, QTimer )
 from PyQt6.QtWidgets import ( 
     QApplication, QMainWindow, QPushButton,  
     QLabel, QVBoxLayout, QWidget, QTextEdit, QHBoxLayout, QSpacerItem, QSizePolicy
 ) 
-from communication import SecureCommunication 
-  
+from communication import Communication  # Updated import
+
 class SecureClientUI(QMainWindow): 
     def __init__(self, port: str, baud_rate: int): 
         super().__init__() 
-        self.communication = SecureCommunication(port, baud_rate) 
+        self.communication = Communication(port, baud_rate) 
         self.initUI() 
   
     def initUI(self): 
@@ -29,7 +30,7 @@ class SecureClientUI(QMainWindow):
         self.session_button.clicked.connect(self.toggle_session) 
         button_layout.addWidget(self.session_button) 
 
-        # Temperature Button 
+                # Temperature Button 
         self.temp_button = QPushButton("Get Temperature") 
         self.temp_button.clicked.connect(self.get_temperature) 
         self.temp_button.setEnabled(False) 
@@ -80,8 +81,8 @@ class SecureClientUI(QMainWindow):
   
     def toggle_session(self): 
         try: 
-            if not self.communication.is_active(): 
-            # Establish Session 
+            if not self.communication.is_session_active():
+                # Establish Session 
                 if self.communication.establish_session(): 
                     self.session_button.setText("Close Session") 
                     self.temp_button.setEnabled(True) 
@@ -91,33 +92,34 @@ class SecureClientUI(QMainWindow):
                     self.log_message("Session Establishment Failed") 
             else: 
                 # Close Session 
-                self.communication.end_session() 
+                self.communication.close() 
                 self.session_button.setText("Establish Session") 
                 self.temp_button.setEnabled(False) 
                 self.relay_button.setEnabled(False) 
                 self.log_message("Session Terminated") 
         except Exception as e: 
             self.log_message(f"Session Error: {e}") 
+
+    def check_session_timeout(self):
+        if not self.communication.is_session_active():
+            self.toggle_session()  # Automatically close the session
   
     def get_temperature(self): 
         try: 
-            temperature = self.communication.get_temperature() 
-            if temperature is not None: 
-                self.log_message(f"Temperature: {temperature}°C") 
-            else: 
-                self.log_message("Failed to get temperature") 
+            self.communication.send_command(b"GET_TEMP")  # Send command to get temperature
+            response = self.communication.communication_read(4)  # Receive response
+            temperature = struct.unpack('f', response)[0]  # Assuming response is a float
+            self.log_message(f"Temperature: {temperature}°C") 
         except Exception as e: 
             self.log_message(f"Temperature Error: {e}") 
   
     def toggle_relay(self): 
-
         try: 
-            relay_state = self.communication.toggle_relay() 
-            if relay_state is not None: 
-                state_str = "ON" if relay_state else "OFF" 
-                self.log_message(f"Relay Toggled: {state_str}") 
-            else: 
-                self.log_message("Failed to toggle relay") 
+            self.communication.send_command(b"TOGGLE_RELAY")  # Send command to toggle relay
+            response = self.communication.communication_read(1)  # Receive response
+            relay_state = struct.unpack('B', response)[0]  # Assuming response is a byte
+            state_str = "ON" if relay_state else "OFF" 
+            self.log_message(f"Relay Toggled: {state_str}") 
         except Exception as e: 
             self.log_message(f"Relay Toggle Error: {e}") 
   
@@ -146,8 +148,8 @@ def main():
     parser.add_argument( 
         '--baud',  
         type=int,  
-        default=115200,  
-        help='Baud rate (default: 115200)' 
+        default=115200,
+                help='Baud rate (default: 115200)' 
     ) 
   
     # Parse arguments 
@@ -169,4 +171,4 @@ def main():
         sys.exit(1) 
 
 if __name__ == "__main__": 
-    main() 
+    main()

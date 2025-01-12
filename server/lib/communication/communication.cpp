@@ -1,91 +1,44 @@
 #include "communication.h"
-//#include <Arduino.h>
+#include <Arduino.h>
 
-Communication::Communication(HardwareSerial &serial) : serialPort(serial) {}
-
-bool Communication::init()
+Communication::Communication(const char *port, int baudrate)
 {
-    serialPort.begin(115200); // Default baud rate
-    return true;
+    // Initialize the serial port with the specified port and baud rate
+    Serial.begin(baudrate);
 }
 
-bool Communication::handleCommand(CommandType cmd)
+bool Communication::communication_send(const uint8_t *data, size_t dlen)
 {
-    switch (cmd)
+    // Write data to the serial port
+    return (dlen == Serial.write(data, dlen));
+}
+
+size_t Communication::communication_read(uint8_t *buf, size_t blen)
+{
+    // Wait for data to be available
+    unsigned long timeout = millis() + 5000; // 5-second timeout
+    while (Serial.available() < blen && millis() < timeout)
     {
-    case GET_TEMPERATURE:
-    {
-        float temp = readCoreTemperature();
-        return sendTemperatureResponse(temp);
+
+        delay(10);
     }
 
-    case TOGGLE_RELAY:
+    // Read available data
+    return Serial.readBytes(buf, blen);
+}
+
+bool Communication::communication_open()
+{
+    // Open the serial port if it's not already open
+    if (!Serial)
     {
-        toggleRelay();
-        return sendRelayStateResponse(digitalRead(32) == HIGH);
+        Serial.begin(115200);
     }
-
-    default:
-        return false;
-    }
+    return Serial;
 }
 
-bool Communication::sendMessage(const uint8_t *message, size_t length)
+void Communication::communication_close()
 {
-    if (!serialPort)
-        return false;
-
-    // Send message length first
-    serialPort.write((uint8_t *)&length, sizeof(size_t));
-
-    // Send actual message
-    serialPort.write(message, length);
-    serialPort.flush();
-    return true;
-}
-
-bool Communication::receiveMessage(uint8_t *buffer, size_t *length)
-{
-    if (!serialPort.available())
-        return false;
-
-    // Receive message length
-    size_t expectedLength;
-    serialPort.readBytes((uint8_t *)&expectedLength, sizeof(size_t));
-
-    // Receive message
-    *length = serialPort.readBytes(buffer, expectedLength);
-
-    return *length == expectedLength;
-}
-
-void Communication::close()
-{
-    serialPort.end();
-}
-
-float Communication::readCoreTemperature()
-{
-    return temperatureRead();
-}
-
-void Communication::toggleRelay()
-{
-    static bool relayState = false;
-    relayState = !relayState;
-    digitalWrite(32, relayState ? HIGH : LOW);
-}
-
-bool Communication::sendTemperatureResponse(float temperature)
-{
-    // Convert float to bytes
-    uint8_t tempBytes[sizeof(float)];
-    memcpy(tempBytes, &temperature, sizeof(float));
-    return sendMessage(tempBytes, sizeof(float));
-}
-
-bool Communication::sendRelayStateResponse(bool state)
-{
-    uint8_t stateBytes[1] = {state ? 1 : 0};
-    return sendMessage(stateBytes, 1);
+    // Close the serial port
+    Serial.end();
 }

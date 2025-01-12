@@ -1,34 +1,21 @@
 #ifndef COMMUNICATION_H
 #define COMMUNICATION_H
 
-#include <Arduino.h>
-#include <cstddef>
-
-enum CommandType
-{
-    GET_TEMPERATURE,
-    TOGGLE_RELAY
-};
+#include <stdint.h>
+#include <stddef.h>
 
 class Communication
 {
 public:
-    Communication(HardwareSerial &serial);
-
-    bool init();
-    bool sendMessage(const uint8_t *message, size_t length);
-    bool receiveMessage(uint8_t *buffer, size_t *length);
-    void close();
-
-    bool handleCommand(CommandType cmd);
-    bool sendTemperatureResponse(float temperature);
-    bool sendRelayStateResponse(bool state);
+    Communication(const char *port, int baudrate);
+    bool communication_send(const uint8_t *data, size_t dlen);
+    size_t communication_read(uint8_t *buf, size_t blen);
+    bool communication_open();
+    void communication_close();
 
 private:
-    HardwareSerial &serialPort;
-
-    float readCoreTemperature();
-    void toggleRelay();
+    // Add any necessary private members, such as the serial port handle
+    int serial_port; // This could be a platform-specific type
 };
 
 #endif // COMMUNICATION_H

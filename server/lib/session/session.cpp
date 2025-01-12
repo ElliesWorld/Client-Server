@@ -1,536 +1,246 @@
 #include "session.h"
-#include "communication.h"
+#include <mbedtls/aes.h>
+#include <mbedtls/md.h>
+#include <mbedtls/pk.h>
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/entropy.h>
+#include <cstring>
+#include <cstdlib>
 
-// Define the hardcoded HMAC secret key
-//const char *Session::HMAC_SECRET_KEY = "Fj2-;wu3Ur=ARl2!Tqi6IuKM3nG]8z1+";
-
-const uint8_t Session::HMAC_SECRET_KEY[] = {
+const uint8_t Session::SECRET_KEY[] = {
     0x46, 0x6A, 0x32, 0x2D, 0x3B, 0x77, 0x75, 0x33,
     0x55, 0x72, 0x3D, 0x41, 0x52, 0x6C, 0x32, 0x21,
     0x54, 0x71, 0x69, 0x36, 0x49, 0x75, 0x4B, 0x4D,
     0x33, 0x6E, 0x47, 0x5D, 0x38, 0x7A, 0x31, 0x2B};
 
-const size_t Session::HMAC_SECRET_KEY_LENGTH = sizeof(Session::HMAC_SECRET_KEY);
-
-// LED Pin Definition
-const int LED_PIN = 21;
-
-Session::Session() : sessionEstablished(false), lastActivityTime(0)
+Session::Session(const char *port, int baudrate)
+    : comm(port, baudrate), session_active(false)
 {
-    // Initialize LED
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW);
-
-    // Initialize cryptographic contexts
-    initializeCryptoContexts();
+    // Initialize contexts
+    mbedtls_pk_init(&client_public_rsa);
+    mbedtls_pk_init(&server_public_rsa);
+    mbedtls_ctr_drbg_init(&ctr_drbg);
+    mbedtls_entropy_init(&entropy);
 }
 
 Session::~Session()
 {
-    // Cleanup resources
-    cleanupCryptoContexts();
-}
-
-void Session::initializeCryptoContexts()
-{
-    // Initialize cryptographic contexts
-    mbedtls_pk_init(&serverRsaKey);
-    mbedtls_pk_init(&clientRsaKey);
-    mbedtls_aes_init(&aesContext);
-    mbedtls_ctr_drbg_init(&ctrDrbg);
-    mbedtls_entropy_init(&entropy);
-
-    // Seed the random number generator
-    mbedtls_entropy_init(&entropy);
-    mbedtls_ctr_drbg_init(&ctrDrbg);
-
-    if (mbedtls_ctr_drbg_seed(&ctrDrbg, mbedtls_entropy_func, &entropy, NULL, 0) != 0)
-    {
-        // Handle seeding error
-        indicateSessionFailed();
-    }
-}
-
-void Session::cleanupCryptoContexts()
-{
-    // Free cryptographic resources
-    mbedtls_pk_free(&serverRsaKey);
-    mbedtls_pk_free(&clientRsaKey);
-    mbedtls_aes_free(&aesContext);
-    mbedtls_ctr_drbg_free(&ctrDrbg);
+    // Free mbedTLS contexts
+    mbedtls_pk_free(&client_public_rsa);
+    mbedtls_pk_free(&server_public_rsa);
+    mbedtls_ctr_drbg_free(&ctr_drbg);
     mbedtls_entropy_free(&entropy);
 }
 
-bool Session::establishKeyExchange()
+void Session::initialize_rsa()
 {
-    Communication comm(Serial);
-
-    // Debug: Print key lengths and statuses
-    Serial.println("Starting Key Exchange");
-    Serial.print("Server Public Key Length: ");
-    Serial.println(mbedtls_pk_get_len(&serverRsaKey));
-
-    // Turn off LED at start of key exchange
-    digitalWrite(LED_PIN, LOW);
-
-    try
+    // Seed the random number generator
+    if (mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, nullptr, 0) != 0)
     {
-        // Step 1: Generate Server RSA Key Pair
-        mbedtls_pk_setup(&serverRsaKey, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA));
-        mbedtls_rsa_context *rsa = mbedtls_pk_rsa(serverRsaKey);
-
-        if (mbedtls_rsa_gen_key(rsa, mbedtls_ctr_drbg_random, &ctrDrbg, RSA_KEY_SIZE, 65537) != 0)
-
-        {
-            indicateSessionFailed();
-            return false;
-        }
-
-        // Step 2: Receive Client Public Key
-        uint8_t clientPublicKey[RSA_KEY_SIZE / 8];
-        size_t clientPublicKeyLen = sizeof(clientPublicKey);
-
-        if (!comm.receiveMessage(clientPublicKey, &clientPublicKeyLen))
-        {
-            indicateSessionFailed();
-            return false;
-        }
-
-        // Step 3: Receive Client Public Key HMAC
-        uint8_t receivedClientHmac[HMAC_SIZE];
-        size_t receivedClientHmacLen = sizeof(receivedClientHmac);
-
-        if (!comm.receiveMessage(receivedClientHmac, &receivedClientHmacLen))
-        {
-            indicateSessionFailed();
-            return false;
-        }
-        // Step 4: Verify Client Public Key HMAC
-        if (!verifyHMAC(clientPublicKey, clientPublicKeyLen, receivedClientHmac))
-        {
-            indicateSessionFailed();
-            return false;
-        }
-
-        // Step 5: Import Client Public Key
-        if (mbedtls_pk_parse_public_key(&clientRsaKey, clientPublicKey, clientPublicKeyLen) != 0)
-        {
-            indicateSessionFailed();
-            return false;
-        }
-
-        // Step 6: Prepare Server Public Key
-        uint8_t serverPublicKey[RSA_KEY_SIZE / 8];
-        size_t serverPublicKeyLen = 0;
-
-        // Export server public key
-        if (mbedtls_pk_write_pubkey_der(&serverRsaKey, serverPublicKey, sizeof(serverPublicKey)) <= 0)
-            {
-                indicateSessionFailed();
-                return false;
-            }
-
-        // Step 7: Encrypt Server Public Key with Client's Public Key
-        uint8_t encryptedServerPubKey[RSA_KEY_SIZE / 8];
-        size_t encryptedServerPubKeyLen = 0;
-        
-        if (mbedtls_pk_encrypt(&clientRsaKey, 
-            serverPublicKey, serverPublicKeyLen,
-            encryptedServerPubKey, &encryptedServerPubKeyLen,
-            sizeof(encryptedServerPubKey),
-            mbedtls_ctr_drbg_random, &ctrDrbg) != 0) {
-            indicateSessionFailed();
-            return false;
-        }
-
-        // Step 8: Send Encrypted Server Public Key
-        if (!comm.sendMessage(encryptedServerPubKey, encryptedServerPubKeyLen)) {
-            indicateSessionFailed();
-            return false;
-        }
-
-        // Step 9: Generate and Send HMAC for Server Public Key
-        uint8_t serverPubKeyHmac[HMAC_SIZE];
-        if (!generateHMAC(encryptedServerPubKey, encryptedServerPubKeyLen, serverPubKeyHmac)) {
-            Serial.println("Failed to send encrypted public key");
-            indicateSessionFailed();
-            return false;
-        }
-        Serial.print("Sent Encrypted Public Key Length: ");
-        Serial.println(encryptedServerPubKeyLen);
-
-        if (!comm.sendMessage(serverPubKeyHmac, sizeof(serverPubKeyHmac))) {
-            Serial.println("Failed to send public key HMAC");
-            indicateSessionFailed();
-            return false;
-        }
-
-        // Step 10: Generate AES Key and IV
-        if (!generateRandomBytes(aesKey, AES_KEY_SIZE)) {
-            indicateSessionFailed();
-            return false;
-        }
-        
-        if (!generateRandomBytes(sessionIV, AES_IV_SIZE)) {
-            indicateSessionFailed();
-            return false;
-        }
-
-        // Step 11: Prepare Final Message (New Client Public Key + Signed Secret)
-        uint8_t finalMessage[RSA_KEY_SIZE / 8];
-        size_t finalMessageLen = 0;
-
-        // Combine AES Key, IV, and generate new client key pair
-        mbedtls_pk_context newClientRsaKey;
-        mbedtls_pk_init(&newClientRsaKey);
-        
-        if (mbedtls_pk_setup(&newClientRsaKey, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA)) != 0) {
-            indicateSessionFailed();
-            return false;
-        }
-
-        mbedtls_rsa_context* newRsa = mbedtls_pk_rsa(newClientRsaKey);
-        if (mbedtls_rsa_gen_key(newRsa, mbedtls_ctr_drbg_random, &ctrDrbg, RSA_KEY_SIZE, 65537) != 0) {
-            indicateSessionFailed();
-            return false;
-        }
-
-        // Prepare final message with new client public key, AES key, and IV
-        uint8_t newClientPublicKey[RSA_KEY_SIZE / 8];
-        size_t newClientPublicKeyLen = 0;
-
-        // Similar change for newClientRsaKey
-
-            if (mbedtls_pk_write_pubkey_der(&newClientRsaKey, newClientPublicKey, sizeof(newClientPublicKey)) <= 0)
-            {
-                indicateSessionFailed();
-                return false;
-            }
-
-            // Combine new client public key with AES key and IV
-            memcpy(finalMessage, newClientPublicKey, newClientPublicKeyLen);
-            memcpy(finalMessage + newClientPublicKeyLen, aesKey, AES_KEY_SIZE);
-            memcpy(finalMessage + newClientPublicKeyLen + AES_KEY_SIZE, sessionIV, AES_IV_SIZE);
-            finalMessageLen = newClientPublicKeyLen + AES_KEY_SIZE + AES_IV_SIZE;
-
-            // Encrypt final message with server's public key
-            uint8_t encryptedFinalMessage[RSA_KEY_SIZE / 8];
-            size_t encryptedFinalMessageLen = 0;
-
-            if (mbedtls_pk_encrypt(&serverRsaKey,
-                                   finalMessage, finalMessageLen,
-                                   encryptedFinalMessage, &encryptedFinalMessageLen,
-                                   sizeof(encryptedFinalMessage),
-                                   mbedtls_ctr_drbg_random, &ctrDrbg) != 0)
-            {
-                indicateSessionFailed();
-                return false;
-            }
-
-            // Send encrypted final message
-            if (!comm.sendMessage(encryptedFinalMessage, encryptedFinalMessageLen))
-            {
-                indicateSessionFailed();
-                return false;
-            }
-
-            // Generate and send HMAC
-            uint8_t finalMessageHmac[HMAC_SIZE];
-            if (!generateHMAC(encryptedFinalMessage, encryptedFinalMessageLen, finalMessageHmac))
-            {
-                indicateSessionFailed();
-                return false;
-            }
-
-            if (!comm.sendMessage(finalMessageHmac, sizeof(finalMessageHmac)))
-            {
-                indicateSessionFailed();
-                return false;
-            }
-
-            // Near the end of the method, for server confirmation
-            uint8_t serverConfirmation[RSA_KEY_SIZE / 8];
-            size_t serverConfirmationLen = sizeof(serverConfirmation);
-
-            if (!comm.receiveMessage(serverConfirmation, &serverConfirmationLen))
-
-            {
-                indicateSessionFailed();
-                return false;
-            }
-
-            uint8_t serverConfirmationHmac[HMAC_SIZE];
-            size_t serverConfirmationHmacLen = sizeof(serverConfirmationHmac);
-
-            if (!comm.receiveMessage(serverConfirmationHmac, &serverConfirmationHmacLen))
-            {
-                indicateSessionFailed();
-                return false;
-            }
-
-            // Verify server confirmation HMAC
-            if (!verifyHMAC(serverConfirmation, serverConfirmationLen, serverConfirmationHmac))
-            {
-                indicateSessionFailed();
-                return false;
-            }
-
-            // Session established successfully
-            sessionEstablished = true;
-            lastActivityTime = millis();
-
-            // Indicate successful session establishment
-            indicateSessionEstablished();
-
-            return true;
+        // Handle error - potentially throw an exception or set an error flag
+        return;
     }
-    catch (const std::exception& e) {
-        // Handle any unexpected errors
-        indicateSessionFailed();
-        return false;
-    }
-}
 
-// LED Indication Methods
-void Session::indicateSessionEstablished() {
-    // Solid on for 2 seconds
-    digitalWrite(LED_PIN, HIGH);
-    delay(2000);
-    digitalWrite(LED_PIN, LOW);
-}
-
-void Session::indicateSessionFailed() {
-    // Quick blink pattern
-    for (int i = 0; i < 3; i++) {
-        digitalWrite(LED_PIN, HIGH);
-        delay(100);
-        digitalWrite(LED_PIN, LOW);
-        delay(100);
-    }
-}
-
-// Helper method to generate random bytes
-bool Session::generateRandomBytes(uint8_t* buffer, size_t length) {
-    return mbedtls_ctr_drbg_random(&ctrDrbg, buffer, length) == 0;
-}
-
-bool Session::generateHMAC(const uint8_t *data, size_t dataLen, uint8_t *hmac)
-{
-    mbedtls_md_context_t md_ctx;
-    mbedtls_md_init(&md_ctx);
-
-    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-
-    if (mbedtls_md_setup(&md_ctx, md_info, 1) != 0)
+    // Setup RSA key context
+    if (mbedtls_pk_setup(&client_public_rsa, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA)) != 0)
     {
-        mbedtls_md_free(&md_ctx);
-        return false;
+        // Handle error
+        return;
     }
 
-    if (mbedtls_md_hmac_starts(&md_ctx,
-                               HMAC_SECRET_KEY,
-                               HMAC_SECRET_KEY_LENGTH) != 0)
+    // Generate the RSA key pair
+    if (mbedtls_rsa_gen_key(mbedtls_pk_rsa(client_public_rsa),
+                            mbedtls_ctr_drbg_random, &ctr_drbg,
+                            RSA_SIZE * 8, 65537) != 0)
     {
-        mbedtls_md_free(&md_ctx);
-        return false;
+        // Handle error
+        return;
     }
-
-    if (mbedtls_md_hmac_update(&md_ctx, data, dataLen) != 0)
-    {
-        mbedtls_md_free(&md_ctx);
-        return false;
-    }
-
-    if (mbedtls_md_hmac_finish(&md_ctx, hmac) != 0)
-    {
-        mbedtls_md_free(&md_ctx);
-        return false;
-    }
-
-    mbedtls_md_free(&md_ctx);
-    return true;
 }
 
-bool Session::verifyHMAC(const uint8_t *data, size_t dataLen, const uint8_t *receivedHmac)
+bool Session::key_exchange()
 {
-    uint8_t calculatedHmac[HMAC_SIZE];
+    // Generate client's RSA key pair
+    initialize_rsa();
 
-    if (!generateHMAC(data, dataLen, calculatedHmac))
-    {
-        return false;
-    }
-    // Use constant-time comparison
-    return constantTimeMemCmp(calculatedHmac, receivedHmac, HMAC_SIZE);
-}
+    // Export and send client's public key
+    uint8_t public_key_buffer[RSA_SIZE];
+    size_t key_len = mbedtls_pk_write_pubkey_der(&client_public_rsa, public_key_buffer, sizeof(public_key_buffer));
 
-// Implement constant-time memory comparison
-bool Session::constantTimeMemCmp(const uint8_t *a, const uint8_t *b, size_t length)
-{
-    uint8_t result = 0;
-    for (size_t i = 0; i < length; i++)
-    {
-        result |= a[i] ^ b[i];
-    }
-    return result == 0;
-}
-
-bool Session::isSessionEstablished() const
-{
-    // Check if session is established and not timed out
-    return sessionEstablished &&
-           (millis() - lastActivityTime < SESSION_TIMEOUT_MS);
-}
-
-void Session::endSession()
-{
-    // Clear sensitive data
-    memset(aesKey, 0, sizeof(aesKey));
-    memset(sessionIV, 0, sizeof(sessionIV));
-    memset(sessionId, 0, sizeof(sessionId));
-
-    // Reset session state
-    sessionEstablished = false;
-    lastActivityTime = 0;
-
-    // Turn off LED
-    digitalWrite(LED_PIN, LOW);
-
-    // Reinitialize crypto contexts
-    cleanupCryptoContexts();
-    initializeCryptoContexts();
-}
-
-bool Session::checkSessionTimeout()
-{
-    if (!isSessionEstablished())
-    {
-        endSession();
-        return false;
-    }
-    return true;
-}
-
-void Session::updateLastActivityTime()
-{
-    lastActivityTime = millis();
-}
-
-bool Session::encryptMessage(const uint8_t *input, size_t inputLen,
-                             uint8_t *output, size_t &outputLen)
-{
-    if (!isSessionEstablished())
+    if (key_len == 0 || !comm.communication_send(public_key_buffer, key_len))
     {
         return false;
     }
 
-    // Prepare AES context
+    // Receive server's public key
+    uint8_t server_public_key[RSA_SIZE];
+    if (comm.communication_read(server_public_key, sizeof(server_public_key)) != sizeof(server_public_key))
+    {
+        return false;
+    }
+
+    // Validate and import server's public key
+    if (mbedtls_pk_parse_public_key(&server_public_rsa, server_public_key, sizeof(server_public_key)) != 0)
+    {
+        return false;
+    }
+
+    // Generate AES key and IV
+    if (mbedtls_ctr_drbg_random(&ctr_drbg, aes_key, AES_KEY_SIZE) != 0)
+    {
+        return false;
+    }
+    if (mbedtls_ctr_drbg_random(&ctr_drbg, iv, AES_IV_SIZE) != 0)
+    {
+        return false;
+    }
+
+    // Encrypt AES key with server's public key
+    uint8_t encrypted_aes_key[RSA_SIZE];
+    size_t olen;
+    if (mbedtls_pk_encrypt(&server_public_rsa, aes_key, AES_KEY_SIZE,
+                           encrypted_aes_key, &olen, sizeof(encrypted_aes_key),
+                           mbedtls_ctr_drbg_random, &ctr_drbg) != 0)
+    {
+        return false;
+    }
+
+    // Send encrypted AES key and IV
+    if (!comm.communication_send(encrypted_aes_key, olen) ||
+        !comm.communication_send(iv, AES_IV_SIZE))
+    {
+        return false;
+    }
+
+    // Verify session establishment
+    uint8_t response[12];
+    if (comm.communication_read(response, sizeof(response)) != sizeof(response))
+    {
+        return false;
+    }
+
+    // Mark session as active if verification succeeds
+    session_active = (memcmp(response, "SESSION_OKAY", 12) == 0);
+    return session_active;
+}
+
+void Session::send_command(const uint8_t *command, size_t length)
+{
+    if (!session_active)
+        return;
+
+    // Encrypt command with AES
     mbedtls_aes_context aes;
     mbedtls_aes_init(&aes);
+    mbedtls_aes_setkey_enc(&aes, aes_key, AES_KEY_SIZE * 8);
 
-    // Set up encryption key
-    if (mbedtls_aes_setkey_enc(&aes, aesKey, AES_KEY_SIZE * 8) != 0)
-    {
-        mbedtls_aes_free(&aes);
-        return false;
-    }
+    // Prepare for padding
+    size_t padded_length = length + (AES_BLOCK_SIZE - (length % AES_BLOCK_SIZE));
+    uint8_t padded_command[padded_length];
+    memcpy(padded_command, command, length);
 
-    // Perform PKCS7 padding
-    size_t paddedLen = inputLen + (AES_IV_SIZE - (inputLen % AES_IV_SIZE));
-    uint8_t paddedInput[paddedLen];
-    memcpy(paddedInput, input, inputLen);
+    // PKCS7 Padding
+    uint8_t padding_value = AES_BLOCK_SIZE - (length % AES_BLOCK_SIZE);
+    memset(padded_command + length, padding_value, padding_value);
 
-    uint8_t paddingValue = paddedLen - inputLen;
-    for (size_t i = inputLen; i < paddedLen; i++)
-    {
-        paddedInput[i] = paddingValue;
-    }
+    // Encrypt
+    uint8_t encrypted_command[padded_length];
+    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, padded_length, iv, padded_command, encrypted_command);
 
-    // Encrypt using CBC mode
-    uint8_t iv[AES_IV_SIZE];
-    memcpy(iv, sessionIV, AES_IV_SIZE);
+    // Send command
+    comm.communication_send(encrypted_command, padded_length);
 
-    if (mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, paddedLen,
-                              iv, paddedInput, output) != 0)
-    {
-        mbedtls_aes_free(&aes);
-        return false;
-    }
-
-    outputLen = paddedLen;
+    // Clean up
     mbedtls_aes_free(&aes);
-
-    // Update last activity time
-    updateLastActivityTime();
-    return true;
 }
 
-bool Session::decryptMessage(const uint8_t *input, size_t inputLen,
-                             uint8_t *output, size_t &outputLen)
+size_t Session::receive_response(uint8_t *buffer, size_t length)
 {
-    if (!isSessionEstablished())
-    {
-        return false;
-    }
+    if (!session_active)
+        return 0;
 
-    // Prepare AES context
+    // Read the encrypted response
+    uint8_t encrypted_response[length];
+    size_t bytes_read = comm.communication_read(encrypted_response, length);
+
+    // Decrypt the response
     mbedtls_aes_context aes;
     mbedtls_aes_init(&aes);
+    mbedtls_aes_setkey_dec(&aes, aes_key, AES_KEY_SIZE * 8);
 
-    // Set up decryption key
-    if (mbedtls_aes_setkey_dec(&aes, aesKey, AES_KEY_SIZE * 8) != 0)
-    {
-        mbedtls_aes_free(&aes);
-        return false;
-    }
+    // Decrypt
+    uint8_t decrypted_response[length];
+    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_DECRYPT, bytes_read, iv, encrypted_response, decrypted_response);
 
-    // Prepare IV
-    uint8_t iv[AES_IV_SIZE];
-    memcpy(iv, sessionIV, AES_IV_SIZE);
+    // Remove padding
+    size_t padding_length = decrypted_response[bytes_read - 1];
+    size_t actual_length = bytes_read - padding_length;
 
-    // Decrypt using CBC mode
-    if (mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_DECRYPT, inputLen,
-                              iv, input, output) != 0)
-    {
-        mbedtls_aes_free(&aes);
-        return false;
-    }
+    // Copy to output buffer
+    memcpy(buffer, decrypted_response, actual_length);
 
-    // Remove PKCS7 padding
-    uint8_t paddingLength = output[inputLen - 1];
-    outputLen = inputLen - paddingLength;
-
+    // Clean up
     mbedtls_aes_free(&aes);
 
-    // Update last activity time
-    updateLastActivityTime();
-    return true;
+    return actual_length;
 }
 
-// Static method to calculate hash of secret key
-bool Session::calculateSecretKeyHash(uint8_t *hash)
+void Session::close_session()
 {
-    mbedtls_sha256_context sha256_ctx;
-    mbedtls_sha256_init(&sha256_ctx);
+    // Zero out sensitive data
+    memset(aes_key, 0, AES_KEY_SIZE);
+    memset(iv, 0, AES_IV_SIZE);
 
-    mbedtls_sha256_starts(&sha256_ctx, 0); // 0 for SHA-256
-    mbedtls_sha256_update(&sha256_ctx,
-                          Session::HMAC_SECRET_KEY,
-                          Session::HMAC_SECRET_KEY_LENGTH);
-    mbedtls_sha256_finish(&sha256_ctx, hash);
+    // Free and reinitialize cryptographic contexts
+    mbedtls_pk_free(&client_public_rsa);
+    mbedtls_pk_free(&server_public_rsa);
 
-    mbedtls_sha256_free(&sha256_ctx);
-    return true;
+    // Reinitialize contexts
+    mbedtls_pk_init(&client_public_rsa);
+    mbedtls_pk_init(&server_public_rsa);
+
+    // Mark session as inactive
+    session_active = false;
+
+    // Optional: Close communication channel
+    comm.communication_close();
 }
 
-float Session::getCoreTemperature()
+bool Session::is_session_active() const
 {
-    return temperatureRead();
+    return session_active;
 }
 
-bool Session::toggleRelay()
+void Session::reset_session()
 {
-    static bool relayState = false;
-    relayState = !relayState;
-    digitalWrite(32, relayState ? HIGH : LOW);
-    return relayState;
+    // Similar to close_session, but keeps communication channel open
+    memset(aes_key, 0, AES_KEY_SIZE);
+    memset(iv, 0, AES_IV_SIZE);
+
+    mbedtls_pk_free(&client_public_rsa);
+    mbedtls_pk_free(&server_public_rsa);
+
+    mbedtls_pk_init(&client_public_rsa);
+    mbedtls_pk_init(&server_public_rsa);
+
+    session_active = false;
+}
+
+bool Session::validate_command(const uint8_t *command, size_t length)
+{
+    // Basic command validation
+    if (!session_active)
+        return false;
+
+    // Add more sophisticated validation if needed
+    // For example, check command against known command types
+    switch (command[0])
+    {
+    case SESSION_GET_TEMP:
+    case SESSION_TOGGLE_LED:
+    case SESSION_CLOSE:
+        return true;
+    default:
+        return false;
+    }
 }
