@@ -7,7 +7,7 @@ class Communication:
         self.session_active = False
         self.port = port  # Store port for reference
 
-    def communication_send(self, buffer: bytes):
+    def communication_send(self, buffer: bytes)-> int:
         return self.ser.write(buffer)
 
     def communication_read(self, size: int) -> bytes:
@@ -17,10 +17,10 @@ class Communication:
         self.ser.close()
         self.session_active = False
 
-    def is_session_active(self):
+    def is_session_active(self) -> bool:
         return self.session_active
 
-    def establish_session(self):
+    def establish_session(self) -> bool:
         self.session_active = True
         return True
 
@@ -33,11 +33,5 @@ class Communication:
     def receive_response(self, size: int = 4) -> bytes:
         if not self.session_active:
             raise RuntimeError("Session not active")
-        
-        # Mock responses for testing
-        if command == b"GET_TEMP":
-            return struct.pack('f', 25.5)  # Mock temperature of 25.5°C
-        elif command == b"TOGGLE_RELAY":
-            return struct.pack('B', 1)  # Mock relay ON state
         
         return self.communication_read(size)

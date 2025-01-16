@@ -7,18 +7,18 @@
 #include <cstring>
 #include <cstdlib>
 
-const uint8_t Session::SECRET_KEY[] = {
-    0x46, 0x6A, 0x32, 0x2D, 0x3B, 0x77, 0x75, 0x33,
-    0x55, 0x72, 0x3D, 0x41, 0x52, 0x6C, 0x32, 0x21,
-    0x54, 0x71, 0x69, 0x36, 0x49, 0x75, 0x4B, 0x4D,
-    0x33, 0x6E, 0x47, 0x5D, 0x38, 0x7A, 0x31, 0x2B};
-
-Session::Session(const char *port, int baudrate)
-    : comm(port, baudrate), session_active(false)
+const uint8_t Session::SECRET_KEY[32] = {0x29, 0x49, 0xde, 0xc2, 0x3e, 0x1e, 0x34, 0xb5, 0x2d, 0x22, 0xb5,
+                                         0xba, 0x4c, 0x34, 0x23, 0x3a, 0x9d, 0x3f, 0xe2, 0x97, 0x14, 0xbe,
+                                         0x24, 0x62, 0x81, 0x0c, 0x86, 0xb1, 0xf6, 0x92, 0x54, 0xd6};
+// CORRECT
+Session::Session(const char *port, int baudrate = 115200)
+    : comm(port, baudrate),
+              session_active(false)
 {
     // Initialize contexts
     mbedtls_pk_init(&client_public_rsa);
     mbedtls_pk_init(&server_public_rsa);
+    mbedtls_aes_init(&aes);
     mbedtls_ctr_drbg_init(&ctr_drbg);
     mbedtls_entropy_init(&entropy);
 }
@@ -28,6 +28,7 @@ Session::~Session()
     // Free mbedTLS contexts
     mbedtls_pk_free(&client_public_rsa);
     mbedtls_pk_free(&server_public_rsa);
+    mbedtls_aes_init(&aes);
     mbedtls_ctr_drbg_free(&ctr_drbg);
     mbedtls_entropy_free(&entropy);
 }
@@ -231,13 +232,10 @@ bool Session::validate_command(const uint8_t *command, size_t length)
     // Basic command validation
     if (!session_active)
         return false;
-
-    // Add more sophisticated validation if needed
-    // For example, check command against known command types
     switch (command[0])
     {
     case SESSION_GET_TEMP:
-    case SESSION_TOGGLE_LED:
+    case SESSION_TOGGLE_RELAY:
     case SESSION_CLOSE:
         return true;
     default:

@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,  
     QLabel, QVBoxLayout, QWidget, QTextEdit, QHBoxLayout, QSpacerItem, QSizePolicy
 ) 
-from communication import Communication  # Updated import
+from communication import Communication  
 
 class SecureClientUI(QMainWindow): 
     def __init__(self, port: str, baud_rate: int): 
@@ -30,7 +30,7 @@ class SecureClientUI(QMainWindow):
         self.session_button.clicked.connect(self.toggle_session) 
         button_layout.addWidget(self.session_button) 
 
-                # Temperature Button 
+        # Temperature Button 
         self.temp_button = QPushButton("Get Temperature") 
         self.temp_button.clicked.connect(self.get_temperature) 
         self.temp_button.setEnabled(False) 
@@ -106,9 +106,10 @@ class SecureClientUI(QMainWindow):
   
     def get_temperature(self): 
         try: 
-            self.communication.send_command(b"GET_TEMP")  # Send command to get temperature
+            self.communication.send_command(b"\x01")  # Send command to get temperature
             response = self.communication.communication_read(4)  # Receive response
-            temperature = struct.unpack('f', response)[0]  # Assuming response is a float
+            value = int.from_bytes(response, 'big')
+            temperature = struct.unpack('>f', value.to_bytes(4, 'little'))[0]  # Assuming response is a float
             self.log_message(f"Temperature: {temperature}°C") 
         except Exception as e: 
             self.log_message(f"Temperature Error: {e}") 
@@ -119,10 +120,13 @@ class SecureClientUI(QMainWindow):
             response = self.communication.communication_read(1)  # Receive response
             relay_state = struct.unpack('B', response)[0]  # Assuming response is a byte
             state_str = "ON" if relay_state else "OFF" 
-            self.log_message(f"Relay Toggled: {state_str}") 
+            if relay_state == 0 or relay_state == 1:
+                self.log_message(f"Relay Toggled: {state_str}") 
+            else:
+                self.log_message(f"Invalid Relay State: {relay_state}")
         except Exception as e: 
             self.log_message(f"Relay Toggle Error: {e}") 
-  
+
     def clear_log(self): 
         """Clear log area""" 
         self.log_area.clear() 

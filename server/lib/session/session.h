@@ -16,7 +16,8 @@ enum CommandType
 {
     SESSION_GET_TEMP = 0x01,
     SESSION_TOGGLE_LED = 0x02,
-    SESSION_CLOSE = 0x03
+    SESSION_CLOSE = 0x03,
+    SESSION_ERROR = 0x04
 };
 
 class Session
@@ -25,6 +26,7 @@ public:
     static const int RSA_SIZE = 256;
     static const int AES_KEY_SIZE = 32;
     static const int AES_IV_SIZE = 16;
+    static const int AES_BLOCK_SIZE = 16;
     static const uint8_t SECRET_KEY[];
 
     Session(const char *port, int baudrate = 115200);

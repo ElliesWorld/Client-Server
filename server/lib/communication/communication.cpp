@@ -15,12 +15,9 @@ bool Communication::communication_send(const uint8_t *data, size_t dlen)
 
 size_t Communication::communication_read(uint8_t *buf, size_t blen)
 {
-    // Wait for data to be available
-    unsigned long timeout = millis() + 5000; // 5-second timeout
-    while (Serial.available() < blen && millis() < timeout)
+    while (0 == Serial.available())
     {
-
-        delay(10);
+        ;
     }
 
     // Read available data
@@ -34,6 +31,7 @@ bool Communication::communication_open()
     {
         Serial.begin(115200);
     }
+
     return Serial;
 }
 
