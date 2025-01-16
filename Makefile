@@ -1,6 +1,6 @@
 # Configuration 
-SPEED ?= 115200 
-PORT ?= /dev/ttyUSB0 
+SPEED = 115200 
+PORT = /dev/ttyUSB0 
 
 # Targets 
 .PHONY: clean client server 

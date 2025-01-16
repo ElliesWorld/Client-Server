@@ -1,89 +1,60 @@
 #include <Arduino.h>
+#include "communication.h"
 #include "session.h"
 
-// Define the LED and Relay pins
-#define LED_PIN GPIO_NUM_21
+// Define the Relay pin
 #define RELAY_PIN GPIO_NUM_32
-#define ON "ON"
-#define OFF "OFF"
-
-Session secureSession("/dev/ttyUSB0");
-
-float readTemperature()
-{
-    // Ensure temperature reading is working
-#ifdef CONFIG_IDF_TARGET_ESP32
-    // ESP32 temperature sensor calibration
-    return temperatureRead();
-#else
-    // Fallback or simulated temperature
-    return 25.5; // Default temperature
-#endif
-}
 
 void setup()
 {
-    // Initialize Serial
-    Serial.begin(115200);
-    pinMode(LED_PIN, OUTPUT);
-    pinMode(RELAY_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW);
-    digitalWrite(RELAY_PIN, LOW);
+    // Initialize serial communication
+    communication_init("115200");
 
-    // Initialize the session
-    if (!secureSession.key_exchange())
-    {
-        Serial.println("Session establishment failed.");
-        while (1)
-        {
-            // Blink LED to indicate failure
-            digitalWrite(LED_PIN, HIGH);
-            delay(500);
-            digitalWrite(LED_PIN, LOW);
-            delay(500);
-        }
-    }
-    Serial.println("Session established successfully.");
+    // Initialize Relay pin
+    pinMode(RELAY_PIN, OUTPUT);
+    digitalWrite(RELAY_PIN, LOW);
 }
 
 void loop()
 {
-    // Check for incoming commands
-    uint8_t command_buffer[32]; // Adjust size as needed
-    memset(command_buffer, 0, sizeof(command_buffer));
-    size_t bytes_read = secureSession.receive_response(command_buffer, sizeof(command_buffer));
+    // Protocol command variables
+    uint8_t command;
+    uint8_t response[10];
 
-    if (bytes_read > 0)
+    // Non-blocking check for incoming command
+    if (Serial.available() > 0)
     {
-        // Process the command
-        switch (command_buffer[0])
+        command = Serial.read();
+
+        switch (command)
         {
-        case SESSION_GET_TEMP:
-            // Handle temperature request
-            float temperature = temperatureRead(); // Read the core temperature
-            secureSession.send_command((const uint8_t *)&temperature, sizeof(float));
-            break;
+        case Session::CMD_TEMPERATURE: // Get Temperature
+        {
+            float temperature = temperatureRead();
+            // Convert float to bytes
+            memcpy(response, &temperature, sizeof(float));
+            communication_write(response, sizeof(float));
+        }
+        break;
 
-        case SESSION_TOGGLE_RELAY:
-            // Explicit relay toggling with debug
-            static bool relay_state = false;
-            relay_state = !relay_state;
-            Serial.print("Relay State: ");
-            Serial.println(relay_state);
-            // Ensure correct pin and state
-            digitalWrite(RELAY_PIN, relay_state ? HIGH : LOW);
-            // Send state back
-            uint8_t state_byte = relay_state ? 1 : 0;
-            secureSession.send_command(&state_byte, sizeof(state_byte));
-            break;
+        case Session::CMD_TOGGLE_RELAY: // Toggle Relay
+        {
+            uint8_t relay_state;
+            communication_read(&relay_state, 1);
 
-        case SESSION_CLOSE:
-            // Handle session close
-            secureSession.close_session();
-            break;
+            // Toggle relay
+            digitalWrite(RELAY_PIN, relay_state);
+
+            // Confirm relay state
+            response[0] = digitalRead(RELAY_PIN);
+            communication_write(response, 1);
+        }
+        break;
 
         default:
-            Serial.println("Unknown command received.");
+            // Unknown command
+            response[0] = Session::STATUS_ERROR; // Error status
+            communication_write(response, 1);
             break;
         }
     }

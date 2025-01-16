@@ -1,37 +1,57 @@
 import serial
-import struct
 
 class Communication:
-    def __init__(self, port, baudrate=115200):
-        self.ser = serial.Serial(port, baudrate)
-        self.session_active = False
-        self.port = port  # Store port for reference
+    def __init__(self, info: str) -> None:
+        try:
+            port, speed = info.split(':')
+            self._port = port
+            self._speed = int(speed)
+            self._connection = serial.Serial(self._port, self._speed)
+        except ValueError:
+            raise ValueError("Invalid format for 'info'. Use 'port:speed'.")
+        except serial.SerialException as e:
+            raise ConnectionError(f"Failed to initialize serial connection: {e}")
+    
+    def connect(self) -> bool:
+        try:
+            if not self._connection.is_open:
+                self._connection.open()
+            return self._connection.is_open
+        except serial.SerialException as e:
+            print(f"Error connecting to the port: {e}")
+            return False
 
-    def communication_send(self, buffer: bytes)-> int:
-        return self.ser.write(buffer)
-
-    def communication_read(self, size: int) -> bytes:
-        return self.ser.read(size)
-
-    def close(self):
-        self.ser.close()
-        self.session_active = False
-
-    def is_session_active(self) -> bool:
-        return self.session_active
-
-    def establish_session(self) -> bool:
-        self.session_active = True
-        return True
-
-    # Add these methods to match the GUI expectations
-    def send_command(self, command: bytes):
-        if not self.session_active:
-            raise RuntimeError("Session not active")
-        self.communication_send(command)
-
-    def receive_response(self, size: int = 4) -> bytes:
-        if not self.session_active:
-            raise RuntimeError("Session not active")
+    def disconnect(self) -> None:
+        try:
+            if self._connection.is_open:
+                self._connection.close()
+        except serial.SerialException as e:
+            print(f"Error disconnecting the port: {e}")
+    
+    def send(self, data: bytes) -> bool:
+        if not self._connection.is_open:
+            print("Connection is not open. Unable to send data.")
+            return False
         
-        return self.communication_read(size)
+        try:
+            self._connection.reset_output_buffer()
+            bytes_written = self._connection.write(data)
+            return bytes_written == len(data)
+        except serial.SerialException as e:
+            print(f"Error while sending data: {e}")
+            return False
+    
+    def receive(self, size: int) -> bytes:
+        if not self._connection.is_open:
+            print("Connection is not open. Unable to receive data.")
+            return b""
+        
+        try:
+            self._connection.reset_input_buffer()
+            return self._connection.read(size)
+        except serial.SerialException as e:
+            print(f"Error while receiving data: {e}")
+            return b""
+
+    def __del__(self) -> None:
+        self.disconnect()
