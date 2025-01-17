@@ -5,7 +5,7 @@ class Session:
     # Command types
     __TEMPERATURE = 1
     __TOGGLE_RELAY = 2
-
+    
     def __init__(self, communication):
         self.__communication = communication
 
