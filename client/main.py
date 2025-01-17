@@ -7,22 +7,17 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QCursor
 
-from communication import Communication
+from communication import Communication # This should not be included?
 from session import Session
 
 class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        
-        self.communication = None
-        self.session = None
-        
+    def __init__(self):      
         try:
-            # Initialize communication
-            self.communication = Communication("/dev/ttyUSB0:115200")
-            self.session = Session(self.communication)
-        except Exception as e:
-            self.show_error_dialog("Initialization Error", str(e))
+            self.__session = Session("/dev/ttyUSB0:115200")
+        except:
+            print("Failed to create the clinet")
+        
+        super().__init__()
         
         # Initialize the UI
         self.initUI()

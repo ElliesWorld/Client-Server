@@ -4,13 +4,19 @@ from communication import Communication
 class Session:
     # Command types
     __ESTABLISH_SESSION = 0  # New command for establishing session
-    __CLOSE_SESSION = 3       # New command for closing session
     __TEMPERATURE = 1
     __TOGGLE_RELAY = 2
+    __CLOSE_SESSION = 3       # New command for closing session
+
+    STATUS_OKAY = 0
+    STATUS_ERROR = 1
+    STATUS_EXPIRED = 2
+    STATUS_BAD_REQUEST = 3
+    STATUS_INVALID_SESSION = 4
     
-    def __init__(self, communication):
-        self.__communication = communication
-        self.__is_active = False  # Track session state
+    def __init__(self, cominfo: str):
+        self.__SESSION_ID = 0
+        self.__communication = Communication(cominfo)
 
     def establish_session(self) -> bool:
         """
@@ -25,9 +31,11 @@ class Session:
                 raise ConnectionError("Failed to send establish session command")
             
             # Receive response (1 byte)
-            response = self.__communication.receive(1)
-            if response and response[0] == 0:  # Assuming 0 means success
-                self.__is_active = True
+            response = self.__communication.receive(9)
+            if 0 == len(response):
+                return False
+            elif response[0] == Session.STATUS_OKAY:
+                self.__SESSION_ID = response[1:9]
                 return True
             else:
                 return False
