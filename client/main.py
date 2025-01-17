@@ -14,15 +14,12 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         
-        # Remove session button since we're not using session establishment
         self.communication = None
         self.session = None
         
         try:
             # Initialize communication
             self.communication = Communication("/dev/ttyUSB0:115200")
-            
-            # Initialize session
             self.session = Session(self.communication)
         except Exception as e:
             self.show_error_dialog("Initialization Error", str(e))
@@ -31,9 +28,7 @@ class MainWindow(QMainWindow):
         self.initUI()
 
     def show_error_dialog(self, title, message):
-        """
-        Display an error dialog with the given title and message
-        """
+        """Display an error dialog with the given title and message."""
         error_dialog = QMessageBox()
         error_dialog.setIcon(QMessageBox.Icon.Critical)
         error_dialog.setWindowTitle(title)
@@ -50,18 +45,21 @@ class MainWindow(QMainWindow):
         # Horizontal layout for the buttons
         button_layout = QHBoxLayout()
   
+        # Establish/Close Session Button
+        self.session_button = QPushButton("Establish Session")
+        self.session_button.clicked.connect(self.toggle_session)
+        button_layout.addWidget(self.session_button)
+
         # Temperature Button 
         self.temp_button = QPushButton("Get Temperature") 
         self.temp_button.clicked.connect(self.get_temperature) 
-        # Disable if communication failed
-        self.temp_button.setEnabled(self.session is not None)
+        self.temp_button.setEnabled(self.session is not None)  # Disable if communication failed
         button_layout.addWidget(self.temp_button) 
   
         # Relay Toggle Button 
         self.relay_button = QPushButton("Toggle Relay") 
         self.relay_button.clicked.connect(self.toggle_relay) 
-        # Disable if communication failed
-        self.relay_button.setEnabled(self.session is not None)
+        self.relay_button.setEnabled(self.session is not None)  # Disable if communication failed
         button_layout.addWidget(self.relay_button)
 
         # Fixed space
@@ -88,6 +86,23 @@ class MainWindow(QMainWindow):
         central_widget.setLayout(layout) 
         self.setCentralWidget(central_widget)
 
+    def toggle_session(self):
+        """Toggle session establishment/closure."""
+        if self.session is None:
+            # Simulate establishing a session
+            self.session = Session(self.communication)  # Re-initialize session
+            self.session_button.setText("Close Session")
+            self.temp_button.setEnabled(True)
+            self.relay_button.setEnabled(True)
+            self.log_area.append("Session established (simulated).")
+        else:
+            # Simulate closing the session
+            self.session = None
+            self.session_button.setText("Establish Session")
+            self.temp_button.setEnabled(False)
+            self.relay_button.setEnabled(False)
+            self.log_area.append("Session closed (simulated).")
+
     def get_temperature(self):
         if not self.session:
             self.log_area.append("Communication not initialized")
@@ -100,7 +115,7 @@ class MainWindow(QMainWindow):
             else:
                 QMessageBox.warning(self, "Temperature Error", "Could not retrieve temperature")
         except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+                        QMessageBox.critical(self, "Error", str(e))
 
     def toggle_relay(self):
         if not self.session:

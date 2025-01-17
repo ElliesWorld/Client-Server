@@ -3,11 +3,66 @@ from communication import Communication
 
 class Session:
     # Command types
+    __ESTABLISH_SESSION = 0  # New command for establishing session
+    __CLOSE_SESSION = 3       # New command for closing session
     __TEMPERATURE = 1
     __TOGGLE_RELAY = 2
     
     def __init__(self, communication):
         self.__communication = communication
+        self.__is_active = False  # Track session state
+
+    def establish_session(self) -> bool:
+        """
+        Establish a session with the server.
+        
+        Returns:
+            bool: True if session is established, False otherwise.
+        """
+        try:
+            # Send establish session command
+            if not self.__communication.send(bytes([self.__ESTABLISH_SESSION])):
+                raise ConnectionError("Failed to send establish session command")
+            
+            # Receive response (1 byte)
+            response = self.__communication.receive(1)
+            if response and response[0] == 0:  # Assuming 0 means success
+                self.__is_active = True
+                return True
+            else:
+                return False
+        
+        except Exception as e:
+            print(f"Session establishment error: {e}")
+            return False
+
+    def close_session(self) -> bool:
+        """
+        Close the session with the server.
+        
+        Returns:
+            bool: True if session is closed, False otherwise.
+        """
+        try:
+            # Send close session command
+            if not self.__communication.send(bytes([self.__CLOSE_SESSION])):
+                raise ConnectionError("Failed to send close session command")
+            
+            # Receive response (1 byte)
+            response = self.__communication.receive(1)
+            if response and response[0] == 0:  # Assuming 0 means success
+                self.__is_active = False
+                return True
+            else:
+                return False
+        
+        except Exception as e:
+            print(f"Session closure error: {e}")
+            return False
+
+    def is_active(self) -> bool:
+        """Check if the session is active."""
+        return self.__is_active
 
     def get_temperature(self) -> float:
         """
