@@ -45,6 +45,7 @@ void loop()
         request = (state == digitalRead(RELAY_PIN)) ? session_send_relay_state(state) : session_send_error();
     }
     break;
+    
     case SESSION_CLOSE:
         request = session_close();
         break;

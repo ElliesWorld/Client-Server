@@ -10,17 +10,14 @@ from PyQt6.QtGui import QCursor
 from session import Session
 
 class MainWindow(QMainWindow):
-    def __init__(self):      
-        super().__init__()
-        
-        # Initialize session to None
-        self.session = None
-        
+    def __init__(self):
         try:
-            # Initialize the session with communication info
-            self.communication = "/dev/ttyUSB0:115200"
-        except Exception as e:
-            self.show_error_dialog("Initialization Error", str(e))
+            self.__session = Session("/dev/ttyUSB0:115200")
+        except:
+            print("Failed to create client ...")
+            exit(1)
+
+        super().__init__()
         
         # Initialize the UI
         self.initUI()
@@ -87,37 +84,34 @@ class MainWindow(QMainWindow):
     def toggle_session(self):
         """Toggle session establishment/closure."""
         try:
-            if self.session is None:
-                # Create a new session and try to establish it
-                self.session = Session(self.communication)
-                if self.session.establish_session():
-                    self.session_button.setText("Close Session")
-                    self.temp_button.setEnabled(True)
-                    self.relay_button.setEnabled(True)
-                    self.log_area.append("Session established successfully.")
-                else:
-                    self.session = None
-                    self.log_area.append("Failed to establish session.")
-            else:
+            if self.__session:
                 # Close the session
-                if self.session.close_session():
-                    self.session = None
+                if self.__session.close_session():
                     self.session_button.setText("Establish Session")
                     self.temp_button.setEnabled(False)
                     self.relay_button.setEnabled(False)
                     self.log_area.append("Session closed successfully.")
                 else:
                     self.log_area.append("Failed to close session.")
+            else:
+                if self.__session.establish_session():
+                    self.session_button.setText("Close Session")
+                    self.temp_button.setEnabled(True)
+                    self.relay_button.setEnabled(True)
+                    self.log_area.append("Session established successfully.")
+                else:
+                    self.log_area.append("Failed to establish session.")
+
         except Exception as e:
             self.log_area.append(f"Session toggle error: {str(e)}")
 
     def get_temperature(self):
-        if not self.session:
+        if not self.__session:
             self.log_area.append("Communication not initialized")
             return
 
         try:
-            temperature = self.session.get_temperature()
+            temperature = self.__session.get_temperature()
             if temperature != float('nan'):
                 self.log_area.append(f"Temperature: {temperature:.2f}°C")
             else:
@@ -126,16 +120,12 @@ class MainWindow(QMainWindow):
             self.log_area.append(f"Temperature error: {str(e)}")
 
     def toggle_relay(self):
-        if not self.session:
+        if not self.__session:
             self.log_area.append("Communication not initialized")
             return
 
         try:
-            # Toggle relay (alternating between True and False)
-            current_state = self.relay_button.property("relay_state")
-            new_state = not current_state if current_state is not None else True
-            
-            relay_result = self.session.toggle_relay(new_state)
+            relay_result = self.__session.toggle_relay()
             
             self.log_area.append(f"Relay toggled to: {relay_result}")
             self.relay_button.setProperty("relay_state", relay_result)

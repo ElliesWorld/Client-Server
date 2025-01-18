@@ -12,9 +12,8 @@ class Session:
     STATUS_ERROR = 1
     
     def __init__(self, cominfo: str):
-        self.__SESSION_ID = 0
+        self.__SESSION_ID = bytes([0] * 8)
         self.__communication = Communication(cominfo)
-        self.__is_active = False
 
     def establish_session(self) -> bool:
         """
@@ -32,7 +31,6 @@ class Session:
             response = self.__communication.receive(9)
             if len(response) == 9 and response[0] == self.STATUS_OKAY:
                 self.__SESSION_ID = response[1:9]
-                self.__is_active = True
                 return True
             else:
                 return False
@@ -49,24 +47,18 @@ class Session:
             float: Temperature value
         """
         try:
+            buffer = bytes(self.__TEMPERATURE) + self.__SESSION_ID
             # Send temperature command
-            if not self.__communication.send(bytes([self.__TEMPERATURE])):
+            if not self.__communication.send(buffer):
                 raise ConnectionError("Failed to send temperature command")
             
             # Receive response (5 bytes: 1 byte status + 4 bytes temperature)
             response = self.__communication.receive(5)
-            
+
             if len(response) == 5 and response[0] == self.STATUS_OKAY:
-                # Unpack the float
-                # Use little-endian to match Arduino's memory layout
-                temperature = struct.unpack('<f', response[1:5])[0]
-                
-                # Optional: Add sanity check
-                if -100 <= temperature <= 100:
-                    return temperature
-                else:
-                    print(f"Unexpected temperature value: {temperature}")
-                    return float('nan')
+                value = int.from_bytes(response[1:5], 'little')
+                temperature = struct.unpack('>f', value.to_bytes(4, 'big'))[0]
+                return temperature
             else:
                 print(f"Invalid temperature response. Length: {len(response)}, First byte: {response[0] if response else 'No response'}")
                 return float('nan')
@@ -75,7 +67,7 @@ class Session:
             print(f"Temperature retrieval error: {e}")
             return float('nan')
 
-    def toggle_relay(self, state: bool) -> bool:
+    def toggle_relay(self) -> bool:
         """
         Toggle relay on server
         
@@ -86,9 +78,8 @@ class Session:
             bool: Actual relay state
         """
         try:
-            # Send toggle relay command and state
-            command = bytes([self.__TOGGLE_RELAY, int(state)])
-            if not self.__communication.send(command):
+            buffer = bytes(self.__TOGGLE_RELAY) + self.__SESSION_ID
+            if not self.__communication.send(buffer):
                 raise ConnectionError("Failed to send relay toggle command")
             
             # Receive response (2 bytes: 1 byte status + 1 byte relay state)
@@ -111,13 +102,15 @@ class Session:
             bool: True if session is closed, False otherwise.
         """
         try:
+            buffer = bytes(self.__TOGGLE_RELAY) + self.__SESSION_ID
             # Send close session command
-            if not self.__communication.send(bytes([self.__CLOSE_SESSION])):
+            if not self.__communication.send(buffer):
                 raise ConnectionError("Failed to send close session command")
+            
+            self.__SESSION_ID = bytes([0] * 8)
             # Receive response (1 byte)
             response = self.__communication.receive(1)
-            if response and response[0] == self.STATUS_OKAY:
-                self.__is_active = False
+            if len(response) == 1 and response[0] == self.STATUS_OKAY:
                 return True
             else:
                 return False
@@ -125,6 +118,7 @@ class Session:
         except Exception as e:
             print(f"Session closure error: {e}")
             return False
-    def is_active(self) -> bool:
+        
+    def __bool__(self) -> bool:
         """Check if the session is active."""
-        return self.__is_active
+        return (0 != int.from_bytes(self.__SESSION_ID, 'little'))
