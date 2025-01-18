@@ -7,17 +7,20 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QCursor
 
-from communication import Communication # This should not be included?
 from session import Session
 
 class MainWindow(QMainWindow):
     def __init__(self):      
-        try:
-            self.__session = Session("/dev/ttyUSB0:115200")
-        except:
-            print("Failed to create the clinet")
-        
         super().__init__()
+        
+        # Initialize session to None
+        self.session = None
+        
+        try:
+            # Initialize the session with communication info
+            self.communication = "/dev/ttyUSB0:115200"
+        except Exception as e:
+            self.show_error_dialog("Initialization Error", str(e))
         
         # Initialize the UI
         self.initUI()
@@ -48,13 +51,13 @@ class MainWindow(QMainWindow):
         # Temperature Button 
         self.temp_button = QPushButton("Get Temperature") 
         self.temp_button.clicked.connect(self.get_temperature) 
-        self.temp_button.setEnabled(self.session is not None)  # Disable if communication failed
+        self.temp_button.setEnabled(False)  # Disable until session is established
         button_layout.addWidget(self.temp_button) 
   
         # Relay Toggle Button 
         self.relay_button = QPushButton("Toggle Relay") 
         self.relay_button.clicked.connect(self.toggle_relay) 
-        self.relay_button.setEnabled(self.session is not None)  # Disable if communication failed
+        self.relay_button.setEnabled(False)  # Disable until session is established
         button_layout.addWidget(self.relay_button)
 
         # Fixed space
@@ -83,20 +86,30 @@ class MainWindow(QMainWindow):
 
     def toggle_session(self):
         """Toggle session establishment/closure."""
-        if self.session is None:
-            # Simulate establishing a session
-            self.session = Session(self.communication)  # Re-initialize session
-            self.session_button.setText("Close Session")
-            self.temp_button.setEnabled(True)
-            self.relay_button.setEnabled(True)
-            self.log_area.append("Session established (simulated).")
-        else:
-            # Simulate closing the session
-            self.session = None
-            self.session_button.setText("Establish Session")
-            self.temp_button.setEnabled(False)
-            self.relay_button.setEnabled(False)
-            self.log_area.append("Session closed (simulated).")
+        try:
+            if self.session is None:
+                # Create a new session and try to establish it
+                self.session = Session(self.communication)
+                if self.session.establish_session():
+                    self.session_button.setText("Close Session")
+                    self.temp_button.setEnabled(True)
+                    self.relay_button.setEnabled(True)
+                    self.log_area.append("Session established successfully.")
+                else:
+                    self.session = None
+                    self.log_area.append("Failed to establish session.")
+            else:
+                # Close the session
+                if self.session.close_session():
+                    self.session = None
+                    self.session_button.setText("Establish Session")
+                    self.temp_button.setEnabled(False)
+                    self.relay_button.setEnabled(False)
+                    self.log_area.append("Session closed successfully.")
+                else:
+                    self.log_area.append("Failed to close session.")
+        except Exception as e:
+            self.log_area.append(f"Session toggle error: {str(e)}")
 
     def get_temperature(self):
         if not self.session:
@@ -108,9 +121,9 @@ class MainWindow(QMainWindow):
             if temperature != float('nan'):
                 self.log_area.append(f"Temperature: {temperature:.2f}°C")
             else:
-                QMessageBox.warning(self, "Temperature Error", "Could not retrieve temperature")
+                self.log_area.append("Could not retrieve temperature")
         except Exception as e:
-                        QMessageBox.critical(self, "Error", str(e))
+            self.log_area.append(f"Temperature error: {str(e)}")
 
     def toggle_relay(self):
         if not self.session:
@@ -124,11 +137,8 @@ class MainWindow(QMainWindow):
             
             relay_result = self.session.toggle_relay(new_state)
             
-            if relay_result is not None:
-                self.log_area.append(f"Relay toggled to: {relay_result}")
-                self.relay_button.setProperty("relay_state", relay_result)
-            else:
-                self.log_area.append("Failed to toggle relay")
+            self.log_area.append(f"Relay toggled to: {relay_result}")
+            self.relay_button.setProperty("relay_state", relay_result)
         except Exception as e:
             self.log_area.append(f"Relay toggle error: {str(e)}")
 

@@ -3,20 +3,18 @@ from communication import Communication
 
 class Session:
     # Command types
-    __ESTABLISH_SESSION = 0  # New command for establishing session
+    __ESTABLISH_SESSION = 0
     __TEMPERATURE = 1
     __TOGGLE_RELAY = 2
-    __CLOSE_SESSION = 3       # New command for closing session
+    __CLOSE_SESSION = 3
 
     STATUS_OKAY = 0
     STATUS_ERROR = 1
-    STATUS_EXPIRED = 2
-    STATUS_BAD_REQUEST = 3
-    STATUS_INVALID_SESSION = 4
     
     def __init__(self, cominfo: str):
         self.__SESSION_ID = 0
         self.__communication = Communication(cominfo)
+        self.__is_active = False
 
     def establish_session(self) -> bool:
         """
@@ -30,12 +28,11 @@ class Session:
             if not self.__communication.send(bytes([self.__ESTABLISH_SESSION])):
                 raise ConnectionError("Failed to send establish session command")
             
-            # Receive response (1 byte)
+            # Receive response (9 bytes: 1 byte status + 8 bytes session ID)
             response = self.__communication.receive(9)
-            if 0 == len(response):
-                return False
-            elif response[0] == Session.STATUS_OKAY:
+            if len(response) == 9 and response[0] == self.STATUS_OKAY:
                 self.__SESSION_ID = response[1:9]
+                self.__is_active = True
                 return True
             else:
                 return False
@@ -43,34 +40,6 @@ class Session:
         except Exception as e:
             print(f"Session establishment error: {e}")
             return False
-
-    def close_session(self) -> bool:
-        """
-        Close the session with the server.
-        
-        Returns:
-            bool: True if session is closed, False otherwise.
-        """
-        try:
-            # Send close session command
-            if not self.__communication.send(bytes([self.__CLOSE_SESSION])):
-                raise ConnectionError("Failed to send close session command")
-            
-            # Receive response (1 byte)
-            response = self.__communication.receive(1)
-            if response and response[0] == 0:  # Assuming 0 means success
-                self.__is_active = False
-                return True
-            else:
-                return False
-        
-        except Exception as e:
-            print(f"Session closure error: {e}")
-            return False
-
-    def is_active(self) -> bool:
-        """Check if the session is active."""
-        return self.__is_active
 
     def get_temperature(self) -> float:
         """
@@ -81,18 +50,25 @@ class Session:
         """
         try:
             # Send temperature command
-            if not self.__communication.send(bytes([1])):
+            if not self.__communication.send(bytes([self.__TEMPERATURE])):
                 raise ConnectionError("Failed to send temperature command")
             
-            # Receive 4 bytes (float)
-            response = self.__communication.receive(4)
+            # Receive response (5 bytes: 1 byte status + 4 bytes temperature)
+            response = self.__communication.receive(5)
             
-            if len(response) == 4:
-                value = int.from_bytes(response, 'little')
-                temperature = struct.unpack('>f', value.to_bytes(4, 'big'))[0]
-                return temperature
+            if len(response) == 5 and response[0] == self.STATUS_OKAY:
+                # Unpack the float
+                # Use little-endian to match Arduino's memory layout
+                temperature = struct.unpack('<f', response[1:5])[0]
+                
+                # Optional: Add sanity check
+                if -100 <= temperature <= 100:
+                    return temperature
+                else:
+                    print(f"Unexpected temperature value: {temperature}")
+                    return float('nan')
             else:
-                print(f"Unexpected response length: {len(response)}")
+                print(f"Invalid temperature response. Length: {len(response)}, First byte: {response[0] if response else 'No response'}")
                 return float('nan')
         
         except Exception as e:
@@ -111,19 +87,44 @@ class Session:
         """
         try:
             # Send toggle relay command and state
-            command = bytes([2, int(state)])
+            command = bytes([self.__TOGGLE_RELAY, int(state)])
             if not self.__communication.send(command):
                 raise ConnectionError("Failed to send relay toggle command")
             
-            # Receive relay state
-            response = self.__communication.receive(1)
-            
-            if response:
-                return bool(response[0])
+            # Receive response (2 bytes: 1 byte status + 1 byte relay state)
+            response = self.__communication.receive(2)
+            if len(response) == 2 and response[0] == self.STATUS_OKAY:
+                return bool(response[1])
             else:
-                print("No response received for relay toggle")
+                print(f"Failed to toggle relay. Response: {response}")
                 return False
         
         except Exception as e:
             print(f"Relay toggle error: {e}")
             return False
+
+    def close_session(self) -> bool:
+        """
+        Close the session with the server.
+        
+        Returns:
+            bool: True if session is closed, False otherwise.
+        """
+        try:
+            # Send close session command
+            if not self.__communication.send(bytes([self.__CLOSE_SESSION])):
+                raise ConnectionError("Failed to send close session command")
+            # Receive response (1 byte)
+            response = self.__communication.receive(1)
+            if response and response[0] == self.STATUS_OKAY:
+                self.__is_active = False
+                return True
+            else:
+                return False
+        
+        except Exception as e:
+            print(f"Session closure error: {e}")
+            return False
+    def is_active(self) -> bool:
+        """Check if the session is active."""
+        return self.__is_active
