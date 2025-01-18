@@ -2,16 +2,18 @@
 #define SESSION_H
 
 #include <cstdint>
-// Command types
-constexpr int SESSION_ESTABLISH = 0;
-constexpr int SESSION_TEMPERATURE = 1;
-constexpr int SESSION_TOGGLE_RELAY = 2;
-constexpr int SESSION_CLOSE = 3;
-constexpr int SESSION_BAD_REQUEST = 4;
 
-// Status codes
-constexpr int STATUS_OKAY = 0;
-constexpr int STATUS_ERROR = 1;
+enum
+{
+    SESSION_ESTABLISH,
+    SESSION_TEMPERATURE,
+    SESSION_TOGGLE_RELAY,
+    SESSION_CLOSE,
+
+    SESSION_OKAY,
+    SESSION_ERROR,
+    SESSION_WARNING
+};
 
 int session_init(const char *comparam);
 

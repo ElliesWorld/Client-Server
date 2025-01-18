@@ -21,6 +21,7 @@ size_t communication_read(uint8_t *buf, size_t blen)
     {
         ;
     }
+
     // Read available data
     return Serial.readBytes(buf, blen);
 }

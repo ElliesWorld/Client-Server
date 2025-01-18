@@ -3,17 +3,22 @@ from communication import Communication
 
 class Session:
     # Command types
-    __ESTABLISH_SESSION = 0
     __TEMPERATURE = 1
     __TOGGLE_RELAY = 2
-    __CLOSE_SESSION = 3
+    __CLOSE = 3
 
     STATUS_OKAY = 0
     STATUS_ERROR = 1
+    STATUS_EXPIRED = 2
+    STATUS_HASH_ERROR = 3
+    STATUS_BAD_REQUEST = 4
+    STATUS_INVALID_SESSION = 5
     
     def __init__(self, cominfo: str):
         self.__SESSION_ID = bytes([0] * 8)
         self.__communication = Communication(cominfo)
+        if not self.__communication.connect():
+            raise Exception("Failed to connect ...")
 
     def establish_session(self) -> bool:
         """
@@ -24,7 +29,7 @@ class Session:
         """
         try:
             # Send establish session command
-            if not self.__communication.send(bytes([self.__ESTABLISH_SESSION])):
+            if not self.__communication.send(bytes([0])):
                 raise ConnectionError("Failed to send establish session command")
             
             # Receive response (9 bytes: 1 byte status + 8 bytes session ID)
@@ -47,7 +52,7 @@ class Session:
             float: Temperature value
         """
         try:
-            buffer = bytes(self.__TEMPERATURE) + self.__SESSION_ID
+            buffer = bytes([self.__TEMPERATURE]) + self.__SESSION_ID
             # Send temperature command
             if not self.__communication.send(buffer):
                 raise ConnectionError("Failed to send temperature command")
@@ -78,7 +83,7 @@ class Session:
             bool: Actual relay state
         """
         try:
-            buffer = bytes(self.__TOGGLE_RELAY) + self.__SESSION_ID
+            buffer = bytes([self.__TOGGLE_RELAY]) + self.__SESSION_ID
             if not self.__communication.send(buffer):
                 raise ConnectionError("Failed to send relay toggle command")
             
@@ -102,7 +107,7 @@ class Session:
             bool: True if session is closed, False otherwise.
         """
         try:
-            buffer = bytes(self.__TOGGLE_RELAY) + self.__SESSION_ID
+            buffer = bytes([self.__CLOSE]) + self.__SESSION_ID
             # Send close session command
             if not self.__communication.send(buffer):
                 raise ConnectionError("Failed to send close session command")

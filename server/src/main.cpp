@@ -5,20 +5,36 @@
 #define LED_PIN GPIO_NUM_21
 #define RELAY_PIN GPIO_NUM_32
 
+static void set_status(int status)
+{
+    if (status == SESSION_OKAY)
+    {
+        analogWrite(LED_PIN, 0x00);
+    }
+    else if (status == SESSION_WARNING)
+    {
+        analogWrite(LED_PIN, 0x7F);
+    }
+    else
+    {
+        analogWrite(LED_PIN, 0xFF);
+    }
+}
+
 void setup()
 {
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW);
+    pinMode(GPIO_NUM_21, OUTPUT);
 
     pinMode(RELAY_PIN, OUTPUT);
     digitalWrite(RELAY_PIN, LOW);
 
-    if (STATUS_OKAY != session_init("115200"))
+    if (SESSION_OKAY != session_init("115200"))
     {
+        set_status(SESSION_ERROR);
+
         while (1)
         {
-            digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-            delay(500);
+            ;
         }
     }
 }
@@ -45,15 +61,14 @@ void loop()
         request = (state == digitalRead(RELAY_PIN)) ? session_send_relay_state(state) : session_send_error();
     }
     break;
-    
+
     case SESSION_CLOSE:
         request = session_close();
         break;
+
     default:
-        request = STATUS_ERROR;
-        (void)session_send_error();
         break;
     }
 
-    digitalWrite(LED_PIN, (request == STATUS_OKAY) ? LOW : HIGH);
+    set_status(request);
 }

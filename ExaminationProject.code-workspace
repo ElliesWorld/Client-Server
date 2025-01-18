@@ -6,5 +6,10 @@
 		{
 			"path": "client"
 		}
-	]
+	],
+	"settings": {
+		"files.associations": {
+			"chrono": "cpp"
+		}
+	}
 }
