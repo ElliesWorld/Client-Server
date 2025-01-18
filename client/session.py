@@ -58,9 +58,9 @@ class Session:
                 raise ConnectionError("Failed to send temperature command")
             
             # Receive response (5 bytes: 1 byte status + 4 bytes temperature)
-            response = self.__communication.receive(5)
+            response = self.__communication.receive(9)
 
-            if len(response) == 5 and response[0] == self.STATUS_OKAY:
+            if len(response) == 9 and response[0] == self.STATUS_OKAY:
                 value = int.from_bytes(response[1:5], 'little')
                 temperature = struct.unpack('>f', value.to_bytes(4, 'big'))[0]
                 return temperature
@@ -88,8 +88,8 @@ class Session:
                 raise ConnectionError("Failed to send relay toggle command")
             
             # Receive response (2 bytes: 1 byte status + 1 byte relay state)
-            response = self.__communication.receive(2)
-            if len(response) == 2 and response[0] == self.STATUS_OKAY:
+            response = self.__communication.receive(9)
+            if len(response) == 9 and response[0] == self.STATUS_OKAY:
                 return bool(response[1])
             else:
                 print(f"Failed to toggle relay. Response: {response}")
@@ -114,8 +114,8 @@ class Session:
             
             self.__SESSION_ID = bytes([0] * 8)
             # Receive response (1 byte)
-            response = self.__communication.receive(1)
-            if len(response) == 1 and response[0] == self.STATUS_OKAY:
+            response = self.__communication.receive(9)
+            if len(response) == 9 and response[0] == self.STATUS_OKAY:
                 return True
             else:
                 return False
