@@ -1,6 +1,12 @@
 #include "session.h"
 #include <Arduino.h>
 #include "communication.h"
+#include <mbedtls/md.h>
+#include <mbedtls/pk.h>
+#include <mbedtls/rsa.h>
+#include <mbedtls/aes.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/ctr_drbg.h>
 
 enum
 {
@@ -12,8 +18,30 @@ enum
     STATUS_INVALID_SESSION
 };
 
+constexpr int AES_SIZE{32};
+constexpr int DER_SIZE{294};
+constexpr int RSA_SIZE{256};
+constexpr int HASH_SIZE{32};
+constexpr int EXPONENT{65537};
+constexpr int KEEP_ALIVE{60000};
+constexpr int AES_BLOCK_SIZE{16};
+
+static mbedtls_aes_context aes_ctx;
+static mbedtls_md_context_t hmac_ctx;
+static mbedtls_pk_context client_ctx;
+static mbedtls_pk_context server_ctx;
+static mbedtls_entropy_context entropy;
+static mbedtls_ctr_drbg_context ctr_drbg;
+
 static uint64_t session_id{0};
 static uint32_t prev_access{0};
+static uint8_t aes_key[AES_SIZE]{0};
+static uint8_t enc_iv[AES_BLOCK_SIZE]{0};
+static uint8_t dec_iv[AES_BLOCK_SIZE]{0};
+static uint8_t buffer[DER_SIZE + RSA_SIZE] = {0};
+static const uint8_t secret_key[HASH_SIZE] = {0x29, 0x49, 0xde, 0xc2, 0x3e, 0x1e, 0x34, 0xb5, 0x2d, 0x22, 0xb5,
+                                              0xba, 0x4c, 0x34, 0x23, 0x3a, 0x9d, 0x3f, 0xe2, 0x97, 0x14, 0xbe,
+                                              0x24, 0x62, 0x81, 0x0c, 0x86, 0xb1, 0xf6, 0x92, 0x54, 0xd6};
 
 int session_init(const char *comparam)
 {
