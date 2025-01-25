@@ -9,7 +9,8 @@
 	],
 	"settings": {
 		"files.associations": {
-			"chrono": "cpp"
+			"chrono": "cpp",
+			"string_view": "cpp"
 		}
 	}
 }
