@@ -1,43 +1,59 @@
-import serial 
-import time
+import serial
 
-from mbedtls import cipher, hmac
+class Communication:
+    def __init__(self, info: str) -> None:
+        try:
+            port, speed = info.split(':')
+            self._port = port
+            self._speed = int(speed)
+            #print(f"Opening serial connection on {self._port} at {self._speed} baud.")  # Debug print
+            self._connection = serial.Serial(self._port, self._speed)
+        except ValueError:
+            raise ValueError("Invalid format for 'info'. Use 'port:speed'.")
+        except serial.SerialException as e:
+            raise ConnectionError(f"Failed to initialize serial connection: {e}")
 
-class SecureCommunication:
+    def connect(self) -> bool:
+        try:
+            if not self._connection.is_open:
+                self._connection.open()
+            #print(f"Connection status: {self._connection.is_open}")  # Debug print
+            return self._connection.is_open
+        except serial.SerialException as e:
+            print(f"Error connecting to the port: {e}")
+            return False
 
-    def __init__(self, port: str, baud_rate: int):
-        self.port = port
-        self.baud_rate = baud_rate
-#        self.session = SecureSession()  # placeholder 
-        self.serial_port = serial.Serial(port, baud_rate, timeout=1)
+    def disconnect(self) -> None:
+        try:
+            if self._connection.is_open:
+                self._connection.close()
+        except serial.SerialException as e:
+            print(f"Error disconnecting the port: {e}")
+    
+    def send(self, data: bytes) -> bool:
+        if not self._connection.is_open:
+            print("Connection is not open. Unable to send data.")
+            return False
+        
+        try:
+            self._connection.reset_output_buffer()
+            bytes_written = self._connection.write(data)
+            return bytes_written == len(data)
+        except serial.SerialException as e:
+            print(f"Error while sending data: {e}")
+            return False
+    
+    def receive(self, size: int) -> bytes:
+        if not self._connection.is_open:
+            print("Connection is not open. Unable to receive data.")
+            return b""
+        
+        try:
+            self._connection.reset_input_buffer()
+            return self._connection.read(size)
+        except serial.SerialException as e:
+            print(f"Error while receiving data: {e}")
+            return b""
 
-    def establish_session(self) -> bool:
-        """Establish a secure session."""
-        return self.session.establish_session()
-
-    def close(self):
-        """Close the serial port."""
-        if self.serial_port.is_open:
-            self.serial_port.close()
-            print("Serial port closed.")
-
-    def end_session(self):
-        """End the current session."""
-        self.session.end_session()
-
-    def is_active(self) -> bool:
-        """Check if the session is active."""
-        return self.session.is_active()
-
-    def send_message(self, message: bytes):
-        """Send a message to the server."""
-        if not self.is_active():
-            raise RuntimeError("No active session.")
-
-        # Sending the raw message bytes
-        self.serial_port.write(message)
-
-    def receive_message(self, size: int) -> bytes:
-        """Receive a message from the server."""
-        # Reading the specified number of bytes from the serial port
-        return self.serial_port.read(size)    
+    def __del__(self) -> None:
+        self.disconnect()

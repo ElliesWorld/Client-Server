@@ -1,21 +1,37 @@
-import sys 
-import argparse 
-from PyQt6.QtGui import QCursor
+import sys
+from PyQt6.QtWidgets import (
+    QMainWindow, QApplication, QVBoxLayout, QHBoxLayout, 
+    QPushButton, QTextEdit, QWidget, QLabel, QSpacerItem, 
+    QSizePolicy, QMessageBox
+)
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import ( 
-    QApplication, QMainWindow, QPushButton,  
-    QLabel, QVBoxLayout, QWidget, QTextEdit, QHBoxLayout, QSpacerItem, QSizePolicy
-) 
-from communication import SecureCommunication 
-  
-class SecureClientUI(QMainWindow): 
-    def __init__(self, port: str, baud_rate: int): 
-        super().__init__() 
-        self.communication = SecureCommunication(port, baud_rate) 
-        self.initUI() 
-  
+from PyQt6.QtGui import QCursor
+
+from session import Session
+
+class MainWindow(QMainWindow):
+    def __init__(self, cominfo: str):
+        try:
+            self.__session = Session(cominfo)
+        except:
+            print("Failed to create client ...")
+            exit(1)
+
+        super().__init__()
+        
+        # Initialize the UI
+        self.initUI()
+
+    def show_error_dialog(self, title, message):
+        """Display an error dialog with the given title and message."""
+        error_dialog = QMessageBox()
+        error_dialog.setIcon(QMessageBox.Icon.Critical)
+        error_dialog.setWindowTitle(title)
+        error_dialog.setText(message)
+        error_dialog.exec()
+
     def initUI(self): 
-        self.setWindowTitle("Client") 
+        self.setWindowTitle("ESP32 Client") 
         self.setGeometry(100, 100, 400, 500) 
   
         # Main layout 
@@ -24,29 +40,29 @@ class SecureClientUI(QMainWindow):
         # Horizontal layout for the buttons
         button_layout = QHBoxLayout()
   
-        # Session Button 
-        self.session_button = QPushButton("Establish Session") 
-        self.session_button.clicked.connect(self.toggle_session) 
-        button_layout.addWidget(self.session_button) 
+        # Establish/Close Session Button
+        self.session_button = QPushButton("Establish Session")
+        self.session_button.clicked.connect(self.toggle_session)
+        button_layout.addWidget(self.session_button)
 
         # Temperature Button 
         self.temp_button = QPushButton("Get Temperature") 
         self.temp_button.clicked.connect(self.get_temperature) 
-        self.temp_button.setEnabled(False) 
+        self.temp_button.setEnabled(False)  # Disable until session is established
         button_layout.addWidget(self.temp_button) 
   
         # Relay Toggle Button 
         self.relay_button = QPushButton("Toggle Relay") 
         self.relay_button.clicked.connect(self.toggle_relay) 
-        self.relay_button.setEnabled(False) 
+        self.relay_button.setEnabled(False)  # Disable until session is established
         button_layout.addWidget(self.relay_button)
 
-        # Fixed space (4 cm)
+        # Fixed space
         spacer = QSpacerItem(80, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
         button_layout.addSpacerItem(spacer)
 
         # Hyperlink-style "Clear Log"
-        self.clear_log_label = QLabel("<a href='#'>Clear</a>")
+        self.clear_log_label = QLabel("<a href='#'>Clear Log</a>")
         self.clear_log_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self.clear_log_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.clear_log_label.linkActivated.connect(self.clear_log)
@@ -63,101 +79,81 @@ class SecureClientUI(QMainWindow):
         # Central Widget 
         central_widget = QWidget() 
         central_widget.setLayout(layout) 
-        self.setCentralWidget(central_widget) 
-  
-    def log_message(self, message: str): 
-        """Add message to log area""" 
-        self.log_area.append(message) 
-  
-    def toggle_session(self): 
-        try: 
-            if not self.communication.is_active(): 
-            # Establish Session 
-                if self.communication.establish_session(): 
-                    self.session_button.setText("Close Session") 
-                    self.temp_button.setEnabled(True) 
-                    self.relay_button.setEnabled(True) 
-                    self.log_message("Session Established") 
-                else: 
-                    self.log_message("Session Establishment Failed") 
-            else: 
-                # Close Session 
-                self.communication.end_session() 
-                self.session_button.setText("Establish Session") 
-                self.temp_button.setEnabled(False) 
-                self.relay_button.setEnabled(False) 
-                self.log_message("Session Terminated") 
-        except Exception as e: 
-            self.log_message(f"Session Error: {e}") 
-  
-    def get_temperature(self): 
-        try: 
-            temperature = self.communication.get_temperature() 
-            if temperature is not None: 
-                self.log_message(f"Temperature: {temperature}°C") 
-            else: 
-                self.log_message("Failed to get temperature") 
-        except Exception as e: 
-            self.log_message(f"Temperature Error: {e}") 
-  
-    def toggle_relay(self): 
+        self.setCentralWidget(central_widget)
 
-        try: 
-            relay_state = self.communication.toggle_relay() 
-            if relay_state is not None: 
-                state_str = "ON" if relay_state else "OFF" 
-                self.log_message(f"Relay Toggled: {state_str}") 
-            else: 
-                self.log_message("Failed to toggle relay") 
-        except Exception as e: 
-            self.log_message(f"Relay Toggle Error: {e}") 
-  
-    def clear_log(self): 
-        """Clear log area""" 
-        self.log_area.clear() 
-  
-    def closeEvent(self, event): 
-        """Handle application close""" 
-        try: 
-            # Ensure session is closed and connection is terminated 
-            self.communication.close() 
-        except Exception as e: 
-            print(f"Cleanup error: {e}") 
-        event.accept() 
-  
-def main(): 
-    # Argument parsing 
-    parser = argparse.ArgumentParser(description="Secure Serial Communication Client") 
-    parser.add_argument( 
-        '--port',  
-        type=str,  
-        required=True,  
-        help='Serial port (e.g., /dev/ttyUSB0 or COM3)' 
-    ) 
-    parser.add_argument( 
-        '--baud',  
-        type=int,  
-        default=115200,  
-        help='Baud rate (default: 115200)' 
-    ) 
-  
-    # Parse arguments 
-    args = parser.parse_args() 
-  
-    # Create application 
-    app = QApplication(sys.argv) 
+    def toggle_session(self):
+        """Toggle session establishment/closure."""
+        try:
+            if self.__session:
+                # Close the session
+                if self.__session.close_session():
+                    self.session_button.setText("Establish Session")
+                    self.temp_button.setEnabled(False)
+                    self.relay_button.setEnabled(False)
+                    self.log_area.append("Session closed successfully.")
+                else:
+                    self.log_area.append("Failed to close session.")
+            else:
+                if self.__session.establish_session():
+                    self.session_button.setText("Close Session")
+                    self.temp_button.setEnabled(True)
+                    self.relay_button.setEnabled(True)
+                    self.log_area.append("Session established successfully.")
+                else:
+                    self.log_area.append("Failed to establish session.")
 
-    try: 
-        # Create and show main window 
-        client_ui = SecureClientUI(args.port, args.baud) 
-        client_ui.show() 
+        except Exception as e:
+            self.log_area.append(f"Session toggle error: {str(e)}")
 
-        # Run application 
-        sys.exit(app.exec()) 
+    def get_temperature(self):
+        if not self.__session:
+            self.log_area.append("Communication not initialized")
+            return
 
-    except Exception as e: 
-        print(f"Application initialization error: {e}") 
-        sys.exit(1) 
+        try:
+            temperature = self.__session.get_temperature()
+            if temperature != float('nan'):
+                self.log_area.append(f"Temperature: {temperature:.2f}°C")
+            else:
+                self.log_area.append("Could not retrieve temperature")
+        except Exception as e:
+            self.log_area.append(f"Temperature error: {str(e)}")
 
-if __name__ == "__main__": 
-    main() 
+    def toggle_relay(self):
+        if not self.__session:
+            self.log_area.append("Communication not initialized")
+            return
+
+        try:
+            relay_result = self.__session.toggle_relay()
+            
+            self.log_area.append(f"Relay toggled to: {relay_result}")
+            self.relay_button.setProperty("relay_state", relay_result)
+        except Exception as e:
+            self.log_area.append(f"Relay toggle error: {str(e)}")
+
+    def clear_log(self):
+        self.log_area.clear()
+
+def main():
+    app = QApplication(sys.argv)
+
+    # Check for command-line arguments
+    if len(sys.argv) < 3:
+        print("Usage: python main.py <serial_port> <baud_rate>")
+        sys.exit(1)
+
+    serial_port = sys.argv[1]
+    baud_rate = sys.argv[2]
+
+    # Create session with provided serial port and baud rate
+    try:
+        window = MainWindow(f"{serial_port}:{baud_rate}")
+        window.show()
+        sys.exit(app.exec())
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
