@@ -10,9 +10,9 @@ from PyQt6.QtGui import QCursor
 from session import Session
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, cominfo: str):
         try:
-            self.__session = Session("/dev/ttyUSB0:115200")
+            self.__session = Session(cominfo)
         except:
             print("Failed to create client ...")
             exit(1)
@@ -137,9 +137,23 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
+
+    # Check for command-line arguments
+    if len(sys.argv) < 3:
+        print("Usage: python main.py <serial_port> <baud_rate>")
+        sys.exit(1)
+
+    serial_port = sys.argv[1]
+    baud_rate = sys.argv[2]
+
+    # Create session with provided serial port and baud rate
+    try:
+        window = MainWindow(f"{serial_port}:{baud_rate}")
+        window.show()
+        sys.exit(app.exec())
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
