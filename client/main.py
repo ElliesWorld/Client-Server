@@ -83,54 +83,58 @@ class MainWindow(QMainWindow):
 
     def toggle_session(self):
         """Toggle session establishment/closure."""
-        try:
-            if self.__session:
-                # Close the session
-                if self.__session.close_session():
-                    self.session_button.setText("Establish Session")
-                    self.temp_button.setEnabled(False)
-                    self.relay_button.setEnabled(False)
-                    self.log_area.append("Session closed successfully.")
-                else:
-                    self.log_area.append("Failed to close session.")
+        #try:
+        if self.__session:
+            # Close the session
+            if self.__session.close_session():
+                self.session_button.setText("Establish Session")
+                self.temp_button.setEnabled(False)
+                self.relay_button.setEnabled(False)
+                self.log_area.append("Session closed successfully.")
             else:
-                if self.__session.establish_session():
-                    self.session_button.setText("Close Session")
-                    self.temp_button.setEnabled(True)
-                    self.relay_button.setEnabled(True)
-                    self.log_area.append("Session established successfully.")
-                else:
-                    self.log_area.append("Failed to establish session.")
+                self.log_area.append("Failed to close session.")
+        else:
+            if self.__session.establish_session():
+                self.session_button.setText("Close Session")
+                self.temp_button.setEnabled(True)
+                self.relay_button.setEnabled(True)
+                self.log_area.append("Session established successfully.")
+            else:
+                self.log_area.append("Failed to establish session.")
 
-        except Exception as e:
-            self.log_area.append(f"Session toggle error: {str(e)}")
+       # except Exception as e:
+       #     self.log_area.append(f"Session toggle error: {str(e)}")
 
     def get_temperature(self):
         if not self.__session:
             self.log_area.append("Communication not initialized")
             return
 
-        try:
-            temperature = self.__session.get_temperature()
-            if temperature != float('nan'):
-                self.log_area.append(f"Temperature: {temperature:.2f}°C")
-            else:
-                self.log_area.append("Could not retrieve temperature")
-        except Exception as e:
-            self.log_area.append(f"Temperature error: {str(e)}")
+        temperature = self.__session.get_temperature()
+        
+        if temperature is None:  # Check for expired session
+            self.log_area.append("Communication not initialized")
+            self.session_button.setText("Establish Session")
+            self.temp_button.setEnabled(False)
+            self.relay_button.setEnabled(False)
+        else:
+            self.log_area.append(f"Temperature: {temperature:.2f}°C")
 
     def toggle_relay(self):
         if not self.__session:
             self.log_area.append("Communication not initialized")
             return
 
-        try:
-            relay_result = self.__session.toggle_relay()
-            
+        relay_result = self.__session.toggle_relay()
+        
+        if relay_result is None:  # Check for expired session
+            self.log_area.append("Communication not initialized")
+            self.session_button.setText("Establish Session")
+            self.temp_button.setEnabled(False)
+            self.relay_button.setEnabled(False)
+        else:
             self.log_area.append(f"Relay toggled to: {relay_result}")
             self.relay_button.setProperty("relay_state", relay_result)
-        except Exception as e:
-            self.log_area.append(f"Relay toggle error: {str(e)}")
 
     def clear_log(self):
         self.log_area.clear()
@@ -147,13 +151,13 @@ def main():
     baud_rate = sys.argv[2]
 
     # Create session with provided serial port and baud rate
-    try:
-        window = MainWindow(f"{serial_port}:{baud_rate}")
-        window.show()
-        sys.exit(app.exec())
-    except Exception as e:
-        print(f"Error: {e}")
-        sys.exit(1)
+    #try:
+    window = MainWindow(f"{serial_port}:{baud_rate}")
+    window.show()
+    sys.exit(app.exec())
+    #except Exception as e:
+    #    print(f"Error: {e}")
+    #    sys.exit(1)
 
 if __name__ == "__main__":
     main()
