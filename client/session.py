@@ -131,6 +131,12 @@ class Session:
         """
         buffer = bytearray(4)
         status = self.__request(self.__TEMPERATURE, buffer)
+        
+        if status == Session.STATUS_EXPIRED:
+            # Reset session ID to indicate session is no longer active
+            self.__SESSION_ID = bytes([0] * 8)
+            return None 
+        
         if status != Session.STATUS_OKAY:
             raise Exception(status)
 
@@ -142,14 +148,17 @@ class Session:
         """
         Toggle relay on server
         
-        Args:
-            state (bool): Desired relay state
-        
         Returns:
             bool: Actual relay state
         """
         buffer = bytearray(1)
         status = self.__request(self.__TOGGLE_RELAY, buffer)
+        
+        if status == Session.STATUS_EXPIRED:
+            # Reset session ID to indicate session is no longer active
+            self.__SESSION_ID = bytes([0] * 8)
+            return None  # Or any other indicator of failure
+        
         if status != Session.STATUS_OKAY:
             raise Exception(status)
 

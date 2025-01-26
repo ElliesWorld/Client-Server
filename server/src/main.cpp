@@ -2,6 +2,7 @@
 #include "session.h"
 
 // Define the Relay pin (specific GPIO pin for controlling the relay)
+//LED for debugging purposes only
 #define LED_PIN GPIO_NUM_21
 #define RELAY_PIN GPIO_NUM_32
 
@@ -17,7 +18,7 @@ static void set_status(int status)
     }
     else
     {
-        analogWrite(LED_PIN, 0xFF);
+        analogWrite(LED_PIN, 0xFF); // Communication not initialized
     }
 }
 
