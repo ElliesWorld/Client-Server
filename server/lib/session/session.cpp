@@ -154,7 +154,7 @@ static int exchange_public_keys(void)
                             {
                                 if (MBEDTLS_PK_RSA == mbedtls_pk_get_type(&client_ctx))
                                 {
-                                    if (0 == mbedtls_pk_verify(&client_ctx, MBEDTLS_MD_SHA256, secret_key, HASH_SIZE, buffer, RSA_SIZE))
+                                    if (0 == mbedtls_pk_verify(&client_ctx, MBEDTLS_MD_SHA256, secret_key, HASH_SIZE, buffer + DER_SIZE, RSA_SIZE))
                                     {
                                         strcpy((char *)buffer, "DONE");
                                         if (0 == mbedtls_pk_encrypt(&client_ctx, buffer, strlen((const char *)buffer), cipher, &length, RSA_SIZE, mbedtls_ctr_drbg_random, &ctr_drbg))
@@ -201,19 +201,14 @@ int session_init(const char *comparam)
             {
                 // AES-256
                 mbedtls_aes_init(&aes_ctx);
-                mbedtls_ctr_drbg_random(&ctr_drbg, enc_iv, sizeof(enc_iv));
-                memcpy(dec_iv, enc_iv, sizeof(dec_iv)); // enc_iv and dec_iv shall be the same
-                mbedtls_ctr_drbg_random(&ctr_drbg, aes_key, sizeof(aes_key));
-                if (0 == mbedtls_aes_setkey_enc(&aes_ctx, aes_key, sizeof(aes_key) * CHAR_BIT))
+
+                // RSA-2048
+                mbedtls_pk_init(&server_ctx);
+                if (0 == mbedtls_pk_setup(&server_ctx, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA)))
                 {
-                    // RSA-2048
-                    mbedtls_pk_init(&server_ctx);
-                    if (0 == mbedtls_pk_setup(&server_ctx, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA)))
+                    if (0 == mbedtls_rsa_gen_key(mbedtls_pk_rsa(server_ctx), mbedtls_ctr_drbg_random, &ctr_drbg, RSA_SIZE * CHAR_BIT, EXPONENT))
                     {
-                        if (0 == mbedtls_rsa_gen_key(mbedtls_pk_rsa(server_ctx), mbedtls_ctr_drbg_random, &ctr_drbg, RSA_SIZE * CHAR_BIT, EXPONENT))
-                        {
-                            status = SESSION_OKAY;
-                        }
+                        status = SESSION_OKAY;
                     }
                 }
             }

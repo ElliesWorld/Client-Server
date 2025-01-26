@@ -6,16 +6,18 @@ class Communication:
             port, speed = info.split(':')
             self._port = port
             self._speed = int(speed)
+            #print(f"Opening serial connection on {self._port} at {self._speed} baud.")  # Debug print
             self._connection = serial.Serial(self._port, self._speed)
         except ValueError:
             raise ValueError("Invalid format for 'info'. Use 'port:speed'.")
         except serial.SerialException as e:
             raise ConnectionError(f"Failed to initialize serial connection: {e}")
-    
+
     def connect(self) -> bool:
         try:
             if not self._connection.is_open:
                 self._connection.open()
+            #print(f"Connection status: {self._connection.is_open}")  # Debug print
             return self._connection.is_open
         except serial.SerialException as e:
             print(f"Error connecting to the port: {e}")

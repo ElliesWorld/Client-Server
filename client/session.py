@@ -42,9 +42,9 @@ class Session:
             raise Exception("Failed to receive the server public key ...")
         
         # RSA private key decryption
-        buffer = self.__client_rsa.decrypt(buffer[0:Session.__RSA_SIZE])
-        buffer += self.__client_rsa.decrypt(buffer[Session.__RSA_SIZE:2*Session.__RSA_SIZE])
-        self.__server_rsa = pk.RSA().from_DER(buffer)
+        self.__server_rsa = self.__client_rsa.decrypt(buffer[0:Session.__RSA_SIZE])
+        self.__server_rsa += self.__client_rsa.decrypt(buffer[Session.__RSA_SIZE:2*Session.__RSA_SIZE])
+        self.__server_rsa = pk.RSA().from_DER(self.__server_rsa)
 
         del self.__client_rsa
         self.__client_rsa = pk.RSA()
@@ -130,7 +130,7 @@ class Session:
             float: Temperature value
         """
         buffer = bytearray(4)
-        status = self.__request([self.__TEMPERATURE], buffer)
+        status = self.__request(self.__TEMPERATURE, buffer)
         if status != Session.STATUS_OKAY:
             raise Exception(status)
 
@@ -149,7 +149,7 @@ class Session:
             bool: Actual relay state
         """
         buffer = bytearray(1)
-        status = self.__request([self.__TOGGLE_RELAY], buffer)
+        status = self.__request(self.__TOGGLE_RELAY, buffer)
         if status != Session.STATUS_OKAY:
             raise Exception(status)
 
@@ -163,7 +163,9 @@ class Session:
         Returns:
             bool: True if session is closed, False otherwise.
         """
-        return (Session.STATUS_OKAY == self.__request([self.__CLOSE], bytearray()))
+        status = (Session.STATUS_OKAY == self.__request(self.__CLOSE, bytearray()))
+        self.__SESSION_ID = bytes([0] * 8)
+        return status
         
     def __bool__(self) -> bool:
         """Check if the session is active."""

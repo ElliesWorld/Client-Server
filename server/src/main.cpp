@@ -23,8 +23,6 @@ static void set_status(int status)
 
 void setup()
 {
-    pinMode(GPIO_NUM_21, OUTPUT);
-
     pinMode(RELAY_PIN, OUTPUT);
     digitalWrite(RELAY_PIN, LOW);
 
