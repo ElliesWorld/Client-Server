@@ -18,7 +18,7 @@ The client application enables users to:
 ## Technologies Used
 
 * **Client:** Python, PyQt6
-* **Server:** C++ (intended for an ESP32 microcontroller)
+* **Server:** C++, PlatformIO, (intended for an ESP32 microcontroller)
 * **Communication:** Serial (UART)
 * **Security:** SHA256, HMAC-SHA256, AES-256, RSA-2048
 
